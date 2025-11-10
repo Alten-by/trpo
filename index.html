@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Магазин</title>
+</head>
+<body>
+    <h1>Список товаров</h1>
+    <button onclick="loadProducts()">Загрузить товары</button>
+    <div id="products"></div>
+
+    <script>
+        async function loadProducts() {
+            let res = await fetch("http://localhost:3000/products");
+            let products = await res.json();
+            document.getElementById("products").innerHTML =
+                products.map(p => `<p>${p.name} — ${p.price} Бел.</p>`).join("");
+        }
+    </script>
+</body>
+</html>
