@@ -4,42 +4,164 @@
     box-sizing: border-box;
 }
 
+html {
+    overflow-y: scroll;
+    overflow-x: hidden;
+    overscroll-behavior-y: none;
+    height: 100%;
+}
+
 body {
-    font-family: Arial, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
     line-height: 1.6;
     color: #333;
-    background-color: white;
+    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    background-attachment: fixed;
+    min-height: 100vh;
+    overflow-x: hidden;
+    overscroll-behavior-y: none;
+    position: relative;
 }
 
-nav {
-    background-color: #333;
-    padding: 15px;
-    text-align: center;
-}
-
-nav a {
-    color: #fff;
-    margin: 0 10px;
-    text-decoration: none;
-    font-family: Arial, sans-serif;
-    font-size: 16px;
-}
-
-nav a:hover {
-    color: #f55c86;
-    text-decoration: underline;
-}
-
-.header-container {
+/* Объединенная навигация */
+.main-nav {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    padding: 12px 40px;
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    width: 100%;
-    padding: 20px;
-    background-color: transparent !important;
-    box-shadow: none !important;
-    border: none !important;
+    justify-content: space-between;
+    gap: 30px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    flex-wrap: wrap;
 }
+
+.nav-brand {
+    flex-shrink: 0;
+}
+
+.nav-brand h1 {
+    margin: 0;
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    font-weight: 600;
+    font-style: italic;
+    font-size: 2rem;
+    color: #fff;
+    background: none;
+    -webkit-text-fill-color: #fff;
+    line-height: 1;
+}
+
+.nav-links {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    flex: 1;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.nav-links a {
+    color: #fff;
+    text-decoration: none;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+    font-size: 16px;
+    font-weight: 500;
+    padding: 6px 12px;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.nav-links a:hover {
+    color: #fff;
+    background-color: rgba(255, 255, 255, 0.2);
+    text-decoration: none;
+    transform: translateY(-1px);
+}
+
+.nav-search {
+    flex-shrink: 0;
+    min-width: 200px;
+    max-width: 300px;
+    flex: 0 0 auto;
+    margin-left: 10px;
+}
+
+.search-wrapper {
+    position: relative;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    background: #fff;
+    border-radius: 50px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    transition: all 0.3s ease;
+    overflow: hidden;
+}
+
+.search-wrapper:focus-within {
+    border-color: #f55c86;
+    box-shadow: 0 6px 25px rgba(245, 92, 134, 0.2);
+    transform: translateY(-2px);
+}
+
+.search-icon {
+    width: 18px;
+    height: 18px;
+    color: #6c757d;
+    margin-left: 15px;
+    flex-shrink: 0;
+    transition: color 0.3s ease;
+}
+
+.search-wrapper:focus-within .search-icon {
+    color: #f55c86;
+}
+
+.search-input {
+    flex: 1;
+    border: none;
+    outline: none;
+    padding: 10px 15px;
+    font-size: 14px;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: #333;
+    background: transparent;
+}
+
+.search-input::placeholder {
+    color: #9ca3af;
+    font-style: italic;
+}
+
+.search-clear {
+    width: 24px;
+    height: 24px;
+    border: none;
+    background: #f3f4f6;
+    color: #6c757d;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 1;
+    margin-right: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+.search-clear:hover {
+    background: #e5e7eb;
+    color: #f55c86;
+    transform: scale(1.1);
+}
+
 
 .main-content {
     max-width: 1200px;
@@ -77,63 +199,155 @@ nav a:hover {
 }
 
 footer {
-    background-color: #333;
+    background: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
     color: white;
-    text-align: center;
-    padding: 20px;
-    margin-top: 40px;
+    padding: 40px 20px 20px;
+    margin-top: 60px;
+    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
 }
 
-.description{
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    font-size: 1.3rem;
-    line-height: 1.7;
-    color: #444;
+.footer-content {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.footer-description {
+    margin-bottom: 30px;
     text-align: justify;
-    margin: 20px 0;
-    padding: 25px;
-    background: linear-gradient(135deg, #f0f2f5 0%, #e8eaed 100%);
-    border-left: 4px solid #f55c86;
-    border-radius: 0 12px 12px 0;
-    box-shadow: 0 5px 15px rgba(0,0,0,0.08);
 }
 
-.Title{
-    font-family: 'Playfair Display', Georgia, serif;
-    font-size: 2.2rem;
-    font-weight: 700;
-    line-height: 1.3;
-    margin: 25px 0;
+.footer-description p {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-size: 15px;
+    line-height: 1.8;
+    color: rgba(255, 255, 255, 0.85);
+    margin: 0;
+    padding: 0 20px;
+}
+
+.footer-copyright {
     text-align: center;
-    letter-spacing: 0.5px;
-    text-transform: uppercase;
-    color: #657786;
-    text-shadow: 0 4px 10px rgba(102, 126, 234, 0.2);
-    padding: 15px 0;
-    border-bottom: 3px solid #f55c86;
-    border-top: 3px solid #f55c86;
+    margin: 0;
+    padding-top: 20px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    font-size: 14px;
+    opacity: 0.8;
 }
 
-@media (max-width: 768px) {
-    .header-container {
+/* Информационный блок */
+.info-section {
+    width: 100%;
+    margin-bottom: 20px;
+    padding: 20px;
+    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+    border-radius: 12px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+    border: 1px solid #e8e8e8;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.info-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.info-label {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+    font-size: 16px;
+    color: #6c757d;
+    font-weight: 500;
+}
+
+.info-value {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+    font-size: 18px;
+    color: #2d3436;
+    font-weight: 600;
+}
+
+
+@media (max-width: 992px) {
+    .main-nav {
         flex-direction: column;
+        padding: 15px 20px;
+        gap: 15px;
+    }
+    
+    .nav-brand {
+        width: 100%;
         text-align: center;
     }
     
-    nav a {
-        display: block;
-        margin: 5px 0;
+    .nav-links {
+        width: 100%;
+        justify-content: center;
+        gap: 10px;
+        flex-direction: column;
+    }
+    
+    .nav-search {
+        width: 100%;
+        max-width: 100%;
+        margin-left: 0;
+    }
+}
+
+@media (max-width: 768px) {
+    .main-nav {
+        padding: 12px 15px;
+    }
+    
+    .nav-brand h1 {
+        font-size: 1.5rem;
+    }
+    
+    .nav-links {
+        flex-direction: column;
+        gap: 8px;
+    }
+    
+    .nav-links a {
+        width: 100%;
+        text-align: center;
+        padding: 8px;
+    }
+    
+    .search-input {
+        padding: 10px 12px;
+        font-size: 14px;
+    }
+    
+    .info-section {
+        padding: 15px;
+        margin-bottom: 15px;
+    }
+    
+    .info-item {
+        flex-direction: column;
+        gap: 5px;
+        text-align: center;
+    }
+    
+    .footer-description p {
+        padding: 0 10px;
+        font-size: 14px;
     }
 }
 
 .CheckBox{
-    font-family: Arial, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
     max-width: 400px;
-    padding: 15px;
+    padding: 20px;
     line-height: 1.5;
-    background-color: #fff;
+    background: #fff;
     color: #333;
     text-align: left;
+    border-radius: 16px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+    border: 1px solid #e8e8e8;
 }
 
 .CheckBox h1 {
@@ -156,11 +370,12 @@ footer {
 
 .CheckBox .checkbox-group {
     margin: 12px 0;
-    background: #f8f9fa;
-    padding: 12px;
-    border-radius: 8px;
+    background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+    padding: 15px;
+    border-radius: 12px;
     border: 1px solid #e9ecef;
     text-align: left;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
 .CheckBox .checkbox-item {
@@ -229,17 +444,38 @@ footer {
 
 .main-content-wrapper {
     display: flex;
-    gap: 20px;
-    padding: 0 20px 20px 20px;
+    gap: 30px;
+    padding: 0 20px 40px 20px;
     max-width: 1400px;
     margin: 0 auto;
     align-items: flex-start;
+    background: transparent;
 }
 
 .filters-container {
     flex: 0 0 300px;
     position: sticky;
-    top: 20px;
+    top: 100px;
+    max-height: calc(100vh - 120px);
+    overflow-y: auto;
+}
+
+.filters-container::-webkit-scrollbar {
+    width: 6px;
+}
+
+.filters-container::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 10px;
+}
+
+.filters-container::-webkit-scrollbar-thumb {
+    background: #f55c86;
+    border-radius: 10px;
+}
+
+.filters-container::-webkit-scrollbar-thumb:hover {
+    background: #e04a76;
 }
 
 .filters-container .CheckBox {
@@ -249,32 +485,35 @@ footer {
 .products-container {
     flex: 1;
     min-width: 0;
-    padding-top: 65px; 
+    padding-top: 20px; 
+    background: transparent;
 }
 
 .products-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 15px;
+    gap: 20px;
 }
 
 .product-card {
     background: #fff;
-    border-radius: 10px;
-    padding: 12px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
-    border: 1px solid #e0e0e0;
-    transition: all 0.3s ease;
+    border-radius: 16px;
+    padding: 16px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+    border: 1px solid #e8e8e8;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     position: relative;
     min-height: 280px;
     display: flex;
     flex-direction: column;
-    margin: 0; 
+    margin: 0;
+    overflow: hidden;
 }
 
 .product-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    transform: translateY(-5px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+    border-color: #f55c86;
 }
 
 .product-badge {
@@ -505,4 +744,93 @@ footer {
     .product-image img {
         max-height: 140px;
     }
+}
+
+/* Стили для пагинации */
+.pagination-container {
+    margin-top: 40px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 20px 0;
+}
+
+.pagination {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.pagination-btn {
+    width: 45px;
+    height: 45px;
+    border-radius: 50%;
+    border: 2px solid #e0e0e0;
+    background-color: #fff;
+    color: #333;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+.pagination-btn:hover {
+    background-color: #f55c86;
+    color: white;
+    border-color: #f55c86;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 10px rgba(245, 92, 134, 0.3);
+}
+
+.pagination-btn.active {
+    background: linear-gradient(135deg, #f55c86, #e04a76);
+    color: white;
+    border-color: #f55c86;
+    box-shadow: 0 4px 15px rgba(245, 92, 134, 0.4);
+    transform: scale(1.1);
+}
+
+.pagination-btn:active {
+    transform: scale(0.95);
+}
+
+/* Стили для сообщений */
+.loading, .error, .no-products, .no-categories, .loading-categories {
+    text-align: center;
+    padding: 40px 20px;
+    color: #6c757d;
+    font-size: 16px;
+}
+
+.error {
+    color: #e74c3c;
+    background-color: #fee;
+    border: 1px solid #e74c3c;
+    border-radius: 8px;
+    padding: 20px;
+}
+
+.no-products {
+    color: #6c757d;
+    font-size: 18px;
+    grid-column: 1 / -1;
+}
+
+/* Улучшения для product-description */
+.product-description {
+    font-size: 11px;
+    color: #6c757d;
+    margin-bottom: 8px;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+    line-height: 1.4;
+    flex: 1;
 }
