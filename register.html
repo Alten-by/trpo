@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Регистрация - SwiftBuy</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- Объединенная шапка с названием, навигацией и поиском -->
+<nav class="main-nav">
+    <div class="nav-brand">
+        <h1><a href="index.html" style="color: inherit; text-decoration: none;">SwiftBuy</a></h1>
+    </div>
+    <div class="nav-links">
+        <a href="index.html">Главная</a>
+        <a href="#" onclick="goToCart(event); return false;">Корзина</a>
+        <a href="index.html">Доставка и оплата</a>
+        <a href="about.html">О нас</a>
+        <div class="nav-search">
+        <div class="search-wrapper">
+            <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8"></circle>
+                <path d="m21 21-4.35-4.35"></path>
+            </svg>
+            <input type="text" name="Search" class="search-input" placeholder="Поиск товаров..." autocomplete="off">
+            <button class="search-clear" id="search-clear" style="display: none;">×</button>
+        </div>
+        </div>
+        <!-- Иконка пользователя с выпадающим меню -->
+        <div class="user-menu-container">
+            <button class="user-icon-btn" id="user-icon-btn" onclick="toggleUserMenu()">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="12" cy="7" r="4"></circle>
+                </svg>
+            </button>
+            <div class="user-dropdown" id="user-dropdown">
+                <div id="user-menu-content">
+                    <a href="login.html" class="dropdown-item">Войти</a>
+                    <a href="register.html" class="dropdown-item">Регистрация</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</nav>
+
+<!-- Форма регистрации -->
+<div class="auth-container">
+    <div class="auth-card">
+        <h2 class="auth-title">Регистрация</h2>
+        <p class="auth-subtitle">Создайте аккаунт для продолжения</p>
+        
+        <form id="registerForm" class="auth-form">
+            <div class="form-group">
+                <label for="fio">ФИО</label>
+                <input type="text" id="fio" name="fio" required placeholder="Иванов Иван Иванович">
+            </div>
+            
+            <div class="form-group">
+                <label for="email">Email</label>
+                <input type="email" id="email" name="email" required placeholder="example@mail.com">
+            </div>
+            
+            <div class="form-group">
+                <label for="phone">Телефон (необязательно)</label>
+                <input type="tel" id="phone" name="phone" placeholder="+375291234567">
+            </div>
+            
+            <div class="form-group">
+                <label for="password">Пароль</label>
+                <input type="password" id="password" name="password" required placeholder="Минимум 6 символов" minlength="6">
+            </div>
+            
+            <div class="form-group">
+                <label for="confirmPassword">Подтвердите пароль</label>
+                <input type="password" id="confirmPassword" name="confirmPassword" required placeholder="Повторите пароль">
+            </div>
+            
+            <div id="error-message" class="error-message" style="display: none;"></div>
+            <div id="success-message" class="success-message" style="display: none;"></div>
+            
+            <button type="submit" class="auth-button">Зарегистрироваться</button>
+        </form>
+        
+        <div class="auth-footer">
+            <p>Уже есть аккаунт? <a href="login.html">Войти</a></p>
+        </div>
+    </div>
+</div>
+
+<footer>
+    <div class="footer-content">
+        <div class="footer-description">
+            <p>Основанные на передовых технологиях и инновационных решениях, устройства SwiftBuy позволяют вам пользоваться последними достижениями технического прогресса вместе с проверенной надежностью ведущих мировых брендов. Каждое устройство в нашем каталоге проходит многоуровневую проверку качества, что гарантирует безупречную работу и долговечность эксплуатации.</p>
+        </div>
+        <p class="footer-copyright">&copy; 2025 SwiftBuy. Все права защищены.</p>
+    </div>
+</footer>
+
+<script>
+document.getElementById('registerForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const fio = document.getElementById('fio').value.trim();
+    const email = document.getElementById('email').value.trim();
+    const phone = document.getElementById('phone').value.trim();
+    const password = document.getElementById('password').value;
+    const confirmPassword = document.getElementById('confirmPassword').value;
+    const errorMessage = document.getElementById('error-message');
+    const successMessage = document.getElementById('success-message');
+    
+    // Скрываем предыдущие сообщения
+    errorMessage.style.display = 'none';
+    successMessage.style.display = 'none';
+    
+    // Валидация на клиенте
+    if (password !== confirmPassword) {
+        errorMessage.textContent = 'Пароли не совпадают';
+        errorMessage.style.display = 'block';
+        return;
+    }
+    
+    if (password.length < 6) {
+        errorMessage.textContent = 'Пароль должен содержать минимум 6 символов';
+        errorMessage.style.display = 'block';
+        return;
+    }
+    
+    try {
+        const response = await fetch('http://localhost:3000/auth/register', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ 
+                fio, 
+                email, 
+                phone: phone || null, 
+                password 
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok && data.success) {
+            // После успешной регистрации автоматически авторизуем пользователя
+            try {
+                const loginResponse = await fetch('http://localhost:3000/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ email, password })
+                });
+                
+                const loginData = await loginResponse.json();
+                
+                if (loginResponse.ok && loginData.success) {
+                    // Сохраняем данные пользователя в localStorage
+                    localStorage.setItem('user', JSON.stringify(loginData.user));
+                    localStorage.setItem('isAuthenticated', 'true');
+                    
+                    successMessage.textContent = 'Регистрация успешна! Вы автоматически авторизованы. Перенаправление...';
+                    successMessage.style.display = 'block';
+                    
+                    // Перенаправляем на главную страницу через 1 секунду
+                    setTimeout(() => {
+                        window.location.href = 'index.html';
+                    }, 1000);
+                } else {
+                    // Если авторизация не удалась, перенаправляем на страницу входа
+                    successMessage.textContent = 'Регистрация успешна! Перенаправление на страницу входа...';
+                    successMessage.style.display = 'block';
+                    setTimeout(() => {
+                        window.location.href = 'login.html';
+                    }, 2000);
+                }
+            } catch (loginError) {
+                // Если ошибка при авторизации, все равно показываем успех регистрации
+                successMessage.textContent = 'Регистрация успешна! Перенаправление на страницу входа...';
+                successMessage.style.display = 'block';
+                setTimeout(() => {
+                    window.location.href = 'login.html';
+                }, 2000);
+            }
+        } else {
+            errorMessage.textContent = data.error || 'Ошибка при регистрации';
+            errorMessage.style.display = 'block';
+        }
+    } catch (error) {
+        errorMessage.textContent = 'Ошибка подключения к серверу. Проверьте, запущен ли сервер.';
+        errorMessage.style.display = 'block';
+        console.error('Ошибка:', error);
+    }
+});
+
+// Функция для открытия/закрытия меню пользователя
+function toggleUserMenu() {
+    const dropdown = document.getElementById('user-dropdown');
+    if (dropdown) {
+        dropdown.classList.toggle('show');
+    }
+}
+
+// Закрываем меню при клике вне его
+document.addEventListener('click', function(event) {
+    const userMenuContainer = document.querySelector('.user-menu-container');
+    const dropdown = document.getElementById('user-dropdown');
+    
+    if (userMenuContainer && !userMenuContainer.contains(event.target)) {
+        if (dropdown) {
+            dropdown.classList.remove('show');
+        }
+    }
+});
+
+// Функция перехода в корзину
+function goToCart(event) {
+    event.preventDefault();
+    const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
+    
+    if (!isAuthenticated) {
+        // Если пользователь не авторизован, перенаправляем на страницу входа
+        window.location.href = 'login.html';
+    } else {
+        // Если авторизован, можно перейти на страницу корзины (пока заглушка)
+        // В будущем здесь будет: window.location.href = 'cart.html';
+        alert('Корзина (функция в разработке)');
+    }
+}
+</script>
+
+</body>
+</html>
+

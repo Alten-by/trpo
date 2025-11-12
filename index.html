@@ -14,10 +14,10 @@
         <h1>SwiftBuy</h1>
     </div>
     <div class="nav-links">
-        <a href="#">Главная</a>
-        <a href="#">Магазин</a>
-        <a href="#">Доставка и оплата</a>
-        <a href="#">О нас</a>
+        <a href="index.html">Главная</a>
+        <a href="#" onclick="goToCart(event); return false;">Корзина</a>
+        <a href="index.html">Доставка и оплата</a>
+        <a href="about.html">О нас</a>
         <div class="nav-search">
         <div class="search-wrapper">
             <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -27,6 +27,20 @@
             <input type="text" name="Search" class="search-input" placeholder="Поиск товаров..." autocomplete="off">
             <button class="search-clear" id="search-clear" style="display: none;">×</button>
         </div>
+        </div>
+        <!-- Иконка пользователя с выпадающим меню -->
+        <div class="user-menu-container">
+            <button class="user-icon-btn" id="user-icon-btn" onclick="toggleUserMenu()">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="12" cy="7" r="4"></circle>
+                </svg>
+            </button>
+            <div class="user-dropdown" id="user-dropdown">
+                <div id="user-menu-content">
+                    <!-- Содержимое будет добавлено динамически -->
+                </div>
+            </div>
         </div>
     </div>
 </nav>
@@ -289,10 +303,84 @@ function setupSearch() {
     }
 }
 
+// Функция для проверки авторизации и обновления меню пользователя
+function updateAuthNav() {
+    const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
+    const user = JSON.parse(localStorage.getItem('user') || 'null');
+    const userMenuContent = document.getElementById('user-menu-content');
+    
+    if (userMenuContent) {
+        if (isAuthenticated && user) {
+            userMenuContent.innerHTML = `
+                <div class="user-info">
+                    <div class="user-name">${user.fio}</div>
+                    <div class="user-email">${user.email}</div>
+                </div>
+                <div class="dropdown-divider"></div>
+                <a href="#" class="dropdown-item" onclick="logout(); return false;">Выйти</a>
+            `;
+        } else {
+            userMenuContent.innerHTML = `
+                <a href="login.html" class="dropdown-item">Войти</a>
+                <a href="register.html" class="dropdown-item">Регистрация</a>
+            `;
+        }
+    }
+}
+
+// Функция для открытия/закрытия меню пользователя
+function toggleUserMenu() {
+    const dropdown = document.getElementById('user-dropdown');
+    if (dropdown) {
+        dropdown.classList.toggle('show');
+    }
+}
+
+// Закрываем меню при клике вне его
+document.addEventListener('click', function(event) {
+    const userMenuContainer = document.querySelector('.user-menu-container');
+    const userIconBtn = document.getElementById('user-icon-btn');
+    const dropdown = document.getElementById('user-dropdown');
+    
+    if (userMenuContainer && !userMenuContainer.contains(event.target)) {
+        if (dropdown) {
+            dropdown.classList.remove('show');
+        }
+    }
+});
+
+// Функция выхода
+function logout() {
+    localStorage.removeItem('user');
+    localStorage.removeItem('isAuthenticated');
+    const dropdown = document.getElementById('user-dropdown');
+    if (dropdown) {
+        dropdown.classList.remove('show');
+    }
+    updateAuthNav();
+    window.location.reload();
+}
+
+// Функция перехода в корзину
+function goToCart(event) {
+    event.preventDefault();
+    const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
+    
+    if (!isAuthenticated) {
+        // Если пользователь не авторизован, перенаправляем на страницу входа
+        window.location.href = 'login.html';
+    } else {
+        // Если авторизован, можно перейти на страницу корзины (пока заглушка)
+        // В будущем здесь будет: window.location.href = 'cart.html';
+        alert('Корзина (функция в разработке)');
+    }
+}
+
 // Загружаем товары при загрузке страницы
 document.addEventListener('DOMContentLoaded', function() {
     loadProducts();
     setupSearch();
+    updateAuthNav();
 });
 </script>
 

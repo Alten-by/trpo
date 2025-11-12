@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>О нас - SwiftBuy</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- Объединенная шапка с названием, навигацией и поиском -->
+<nav class="main-nav">
+    <div class="nav-brand">
+        <h1><a href="index.html" style="color: inherit; text-decoration: none;">SwiftBuy</a></h1>
+    </div>
+    <div class="nav-links">
+        <a href="index.html">Главная</a>
+        <a href="#" onclick="goToCart(event); return false;">Корзина</a>
+        <a href="index.html">Доставка и оплата</a>
+        <a href="about.html">О нас</a>
+        <div class="nav-search">
+        <div class="search-wrapper">
+            <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8"></circle>
+                <path d="m21 21-4.35-4.35"></path>
+            </svg>
+            <input type="text" name="Search" class="search-input" placeholder="Поиск товаров..." autocomplete="off">
+            <button class="search-clear" id="search-clear" style="display: none;">×</button>
+        </div>
+        </div>
+        <!-- Иконка пользователя с выпадающим меню -->
+        <div class="user-menu-container">
+            <button class="user-icon-btn" id="user-icon-btn" onclick="toggleUserMenu()">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="12" cy="7" r="4"></circle>
+                </svg>
+            </button>
+            <div class="user-dropdown" id="user-dropdown">
+                <div id="user-menu-content">
+                    <!-- Содержимое будет добавлено динамически -->
+                </div>
+            </div>
+        </div>
+    </div>
+</nav>
+
+<!-- Контент страницы "О нас" -->
+<div class="about-container">
+    <div class="about-content">
+        <h1 class="about-title">О нас</h1>
+        
+        <div class="about-text">
+            <p>На протяжении 25 лет имя SwiftBuy является синонимом надежности и качества на рынке. Начав свой путь как небольшой проект, мы выросли в одну из ведущих компаний страны, пройдя через множество этапов развития цифровой эпохи. За эти годы мы не просто наблюдали за изменениями, а сами их создавали, всегда оставаясь верными главному принципу — делать покупки простыми, выгодными и безопасными для каждого нашего клиента. Наш опыт — это фундамент, на котором строится доверие миллионов пользователей.</p>
+            <p>Сегодня SwiftBuy — это современная технологическая платформа, объединяющая тысячи продавцов и миллионы товаров из самых разных категорий. Мы гордимся тем, что создали не просто площадку для торговли, а полноценное сообщество, где покупатели находят именно то, что ищут, а предприниматели получают мощный инструмент для роста. Смотря в будущее, мы продолжаем инвестировать в инновации и развитие сервиса, чтобы оставаться вашим верным помощником и надежным партнером в мире покупок.</p>            
+        </div>
+    </div>
+</div>
+
+<footer>
+    <div class="footer-content">
+        <div class="footer-description">
+            <p>Основанные на передовых технологиях и инновационных решениях, устройства SwiftBuy позволяют вам пользоваться последними достижениями технического прогресса вместе с проверенной надежностью ведущих мировых брендов. Каждое устройство в нашем каталоге проходит многоуровневую проверку качества, что гарантирует безупречную работу и долговечность эксплуатации.</p>
+        </div>
+        <p class="footer-copyright">&copy; 2025 SwiftBuy. Все права защищены.</p>
+    </div>
+</footer>
+
+<script>
+// Функция для проверки авторизации и обновления меню пользователя
+function updateAuthNav() {
+    const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
+    const user = JSON.parse(localStorage.getItem('user') || 'null');
+    const userMenuContent = document.getElementById('user-menu-content');
+    
+    if (userMenuContent) {
+        if (isAuthenticated && user) {
+            userMenuContent.innerHTML = `
+                <div class="user-info">
+                    <div class="user-name">${user.fio}</div>
+                    <div class="user-email">${user.email}</div>
+                </div>
+                <div class="dropdown-divider"></div>
+                <a href="#" class="dropdown-item" onclick="logout(); return false;">Выйти</a>
+            `;
+        } else {
+            userMenuContent.innerHTML = `
+                <a href="login.html" class="dropdown-item">Войти</a>
+                <a href="register.html" class="dropdown-item">Регистрация</a>
+            `;
+        }
+    }
+}
+
+// Функция для открытия/закрытия меню пользователя
+function toggleUserMenu() {
+    const dropdown = document.getElementById('user-dropdown');
+    if (dropdown) {
+        dropdown.classList.toggle('show');
+    }
+}
+
+// Закрываем меню при клике вне его
+document.addEventListener('click', function(event) {
+    const userMenuContainer = document.querySelector('.user-menu-container');
+    const dropdown = document.getElementById('user-dropdown');
+    
+    if (userMenuContainer && !userMenuContainer.contains(event.target)) {
+        if (dropdown) {
+            dropdown.classList.remove('show');
+        }
+    }
+});
+
+// Функция выхода
+function logout() {
+    localStorage.removeItem('user');
+    localStorage.removeItem('isAuthenticated');
+    const dropdown = document.getElementById('user-dropdown');
+    if (dropdown) {
+        dropdown.classList.remove('show');
+    }
+    updateAuthNav();
+    window.location.reload();
+}
+
+// Функция перехода в корзину
+function goToCart(event) {
+    event.preventDefault();
+    const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
+    
+    if (!isAuthenticated) {
+        // Если пользователь не авторизован, перенаправляем на страницу входа
+        window.location.href = 'login.html';
+    } else {
+        // Если авторизован, можно перейти на страницу корзины (пока заглушка)
+        // В будущем здесь будет: window.location.href = 'cart.html';
+        alert('Корзина (функция в разработке)');
+    }
+}
+
+// Инициализация при загрузке страницы
+document.addEventListener('DOMContentLoaded', function() {
+    updateAuthNav();
+});
+</script>
+
+</body>
+</html>
+
