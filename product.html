@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Товар - SwiftBuy</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="main-nav">
+    <div class="nav-brand">
+        <h1><a href="index.html" style="color: inherit; text-decoration: none;">SwiftBuy</a></h1>
+    </div>
+    <div class="nav-links">
+        <a href="index.html">Главная</a>
+        <a href="#" onclick="goToCart(event); return false;">Корзина</a>
+        <a href="index.html">Доставка и оплата</a>
+        <a href="about.html">О нас</a>
+        <div class="nav-search">
+            <div class="search-wrapper">
+                <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <path d="m21 21-4.35-4.35"></path>
+                </svg>
+                <input type="text" name="Search" class="search-input" placeholder="Поиск товаров..." autocomplete="off">
+                <button class="search-clear" id="search-clear" style="display: none;">×</button>
+            </div>
+        </div>
+        <div class="user-menu-container">
+            <button class="user-icon-btn" id="user-icon-btn" onclick="toggleUserMenu()">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="12" cy="7" r="4"></circle>
+                </svg>
+            </button>
+            <div class="user-dropdown" id="user-dropdown">
+                <div id="user-menu-content">
+                    <!-- Содержимое заполняется динамически -->
+                </div>
+            </div>
+        </div>
+    </div>
+</nav>
+
+<main class="product-page" id="product-page">
+    <div class="product-detail-card" id="product-detail-card">
+        <div class="product-detail-loading">Загрузка товара...</div>
+    </div>
+</main>
+
+<footer>
+    <div class="footer-content">
+        <div class="footer-description">
+            <p>Основанные на передовых технологиях и инновационных решениях, устройства SwiftBuy позволяют вам пользоваться последними достижениями технического прогресса вместе с проверенной надежностью ведущих мировых брендов. Каждое устройство в нашем каталоге проходит многоуровневую проверку качества, что гарантирует безупречную работу и долговечность эксплуатации.</p>
+        </div>
+        <p class="footer-copyright">&copy; 2025 SwiftBuy. Все права защищены.</p>
+    </div>
+</footer>
+
+<script>
+const PLACEHOLDER_IMAGE = 'https://via.placeholder.com/600x600?text=SwiftBuy';
+let currentProduct = null;
+
+async function loadProduct() {
+    const params = new URLSearchParams(window.location.search);
+    const productId = Number(params.get('id'));
+
+    if (!productId) {
+        renderFallbackProduct();
+        return;
+    }
+
+    try {
+        const response = await fetch('http://localhost:3000/products');
+        const products = await response.json();
+        currentProduct = products.find(p => Number(p.id) === productId) || null;
+
+        if (!currentProduct) {
+            renderProductNotFound();
+            return;
+        }
+
+        renderProduct(currentProduct);
+    } catch (error) {
+        console.error('Ошибка загрузки товара', error);
+        renderFallbackProduct();
+    }
+}
+
+function renderFallbackProduct() {
+    currentProduct = {
+        id: Date.now(),
+        name: 'Название товара',
+        description: 'Описание временно недоступно. Пожалуйста, попробуйте позже.',
+        price: 0,
+        quantity: 10,
+        article: 'N/A',
+        supplier: 'SwiftBuy',
+        category: 'Электроника',
+        image_url: PLACEHOLDER_IMAGE
+    };
+    renderProduct(currentProduct, true);
+}
+
+function renderProductNotFound() {
+    const container = document.getElementById('product-detail-card');
+    container.innerHTML = `
+        <div class="product-detail-empty">
+            <h2>Товар не найден</h2>
+            <p>Возможно, ссылка устарела. Перейдите на главную страницу, чтобы выбрать другой товар.</p>
+            <a href="index.html" class="primary-btn-link">Вернуться на главную</a>
+        </div>
+    `;
+}
+
+function renderProduct(product, isPlaceholder = false) {
+    const container = document.getElementById('product-detail-card');
+    container.innerHTML = `
+        <div class="product-detail-image">
+            <img src="${product.image_url || PLACEHOLDER_IMAGE}" alt="${product.name}" onerror="this.src='${PLACEHOLDER_IMAGE}'">
+        </div>
+        <div class="product-detail-info">
+            <div class="product-detail-category">${product.category || 'Категория'}</div>
+            <h1 class="product-detail-title">${product.name}</h1>
+            <p class="product-detail-description">${product.description || 'Описание будет добавлено позже.'}</p>
+            <div class="product-detail-meta">
+                <span>Артикул: ${product.article || '—'}</span>
+                ${product.supplier ? `<span>Поставщик: ${product.supplier}</span>` : ''}
+                <span>В наличии: ${Number(product.quantity) > 0 ? product.quantity : 'уточняйте'}</span>
+            </div>
+            <div class="product-detail-purchase">
+                <div class="product-detail-price">${Number(product.price) ? Number(product.price).toFixed(2) + ' руб.' : 'Цена уточняется'}</div>
+                <div class="quantity-selector">
+                    <button type="button" class="quantity-btn" data-action="minus">−</button>
+                    <input type="number" id="quantity-input" value="1" min="1">
+                    <button type="button" class="quantity-btn" data-action="plus">+</button>
+                </div>
+                <button class="primary-btn" id="add-to-cart-btn" ${isPlaceholder ? 'disabled' : ''}>Добавить в корзину</button>
+            </div>
+        </div>
+    `;
+
+    setupQuantityLogic();
+    const addToCartBtn = document.getElementById('add-to-cart-btn');
+    if (addToCartBtn && !isPlaceholder) {
+        addToCartBtn.addEventListener('click', () => handleAddToCart());
+    }
+}
+
+function setupQuantityLogic() {
+    const quantityInput = document.getElementById('quantity-input');
+    const buttons = document.querySelectorAll('.quantity-btn');
+
+    buttons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const action = btn.dataset.action;
+            const current = Number(quantityInput.value) || 1;
+            if (action === 'minus') {
+                quantityInput.value = Math.max(1, current - 1);
+            } else if (action === 'plus') {
+                quantityInput.value = current + 1;
+            }
+        });
+    });
+}
+
+function getPreparedCart() {
+    let cart;
+    try {
+        cart = JSON.parse(localStorage.getItem('cart') || '[]');
+    } catch (error) {
+        cart = [];
+    }
+
+    if (!Array.isArray(cart)) {
+        return [];
+    }
+
+    if (cart.length > 0 && typeof cart[0] === 'number') {
+        cart = cart.map(id => ({
+            id,
+            name: currentProduct && currentProduct.id === id ? currentProduct.name : 'Товар',
+            price: currentProduct && currentProduct.id === id ? Number(currentProduct.price) || 0 : 0,
+            image: currentProduct && currentProduct.id === id ? currentProduct.image_url || PLACEHOLDER_IMAGE : PLACEHOLDER_IMAGE,
+            quantity: 1
+        }));
+    }
+
+    return cart
+        .filter(item => item && typeof item.id !== 'undefined')
+        .map(item => ({
+            id: item.id,
+            name: item.name || (currentProduct && currentProduct.id === item.id ? currentProduct.name : 'Товар'),
+            price: Number(item.price) || 0,
+            image: item.image || PLACEHOLDER_IMAGE,
+            quantity: Number(item.quantity) > 0 ? Number(item.quantity) : 1
+        }));
+}
+
+function handleAddToCart() {
+    if (!currentProduct) {
+        showCartToast('Не удалось добавить товар. Попробуйте позже.');
+        return;
+    }
+
+    const quantityInput = document.getElementById('quantity-input');
+    const quantity = Math.max(1, Number(quantityInput.value) || 1);
+    let cart = getPreparedCart();
+    const existingItem = cart.find(item => item.id === currentProduct.id);
+
+    if (existingItem) {
+        existingItem.quantity += quantity;
+    } else {
+        cart.push({
+            id: currentProduct.id,
+            name: currentProduct.name,
+            price: Number(currentProduct.price) || 0,
+            image: currentProduct.image_url || PLACEHOLDER_IMAGE,
+            quantity
+        });
+    }
+
+    localStorage.setItem('cart', JSON.stringify(cart));
+    showCartToast(`Добавлено ${quantity} шт. «${currentProduct.name}»`);
+}
+
+function showCartToast(message) {
+    let toastContainer = document.querySelector('.cart-toast-container');
+    if (!toastContainer) {
+        toastContainer = document.createElement('div');
+        toastContainer.className = 'cart-toast-container';
+        document.body.appendChild(toastContainer);
+    }
+
+    const toast = document.createElement('div');
+    toast.className = 'cart-toast';
+    toast.textContent = message;
+    toastContainer.appendChild(toast);
+
+    requestAnimationFrame(() => toast.classList.add('show'));
+
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 300);
+    }, 2500);
+}
+
+function updateAuthNav() {
+    const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
+    const user = JSON.parse(localStorage.getItem('user') || 'null');
+    const userMenuContent = document.getElementById('user-menu-content');
+
+    if (!userMenuContent) return;
+
+    if (isAuthenticated && user) {
+        userMenuContent.innerHTML = `
+            <div class="user-info">
+                <div class="user-name">${user.fio}</div>
+                <div class="user-email">${user.email}</div>
+            </div>
+            <div class="dropdown-divider"></div>
+            <a href="#" class="dropdown-item" onclick="logout(); return false;">Выйти</a>
+        `;
+    } else {
+        userMenuContent.innerHTML = `
+            <a href="login.html" class="dropdown-item">Войти</a>
+            <a href="register.html" class="dropdown-item">Регистрация</a>
+        `;
+    }
+}
+
+function toggleUserMenu() {
+    const dropdown = document.getElementById('user-dropdown');
+    if (dropdown) {
+        dropdown.classList.toggle('show');
+    }
+}
+
+document.addEventListener('click', function(event) {
+    const userMenuContainer = document.querySelector('.user-menu-container');
+    const dropdown = document.getElementById('user-dropdown');
+    
+    if (userMenuContainer && !userMenuContainer.contains(event.target)) {
+        if (dropdown) {
+            dropdown.classList.remove('show');
+        }
+    }
+});
+
+function logout() {
+    localStorage.removeItem('user');
+    localStorage.removeItem('isAuthenticated');
+    updateAuthNav();
+    const dropdown = document.getElementById('user-dropdown');
+    if (dropdown) {
+        dropdown.classList.remove('show');
+    }
+}
+
+function goToCart(event) {
+    event.preventDefault();
+    window.location.href = 'cart.html';
+}
+
+function setupSearchStub() {
+    const searchInput = document.querySelector('.search-input');
+    const searchClear = document.getElementById('search-clear');
+
+    if (!searchInput || !searchClear) return;
+
+    searchInput.addEventListener('input', function(e) {
+        const value = e.target.value.trim();
+        searchClear.style.display = value.length ? 'flex' : 'none';
+    });
+
+    searchClear.addEventListener('click', function() {
+        searchInput.value = '';
+        searchClear.style.display = 'none';
+        searchInput.focus();
+    });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    updateAuthNav();
+    loadProduct();
+    setupSearchStub();
+});
+</script>
+
+</body>
+</html>
+
+

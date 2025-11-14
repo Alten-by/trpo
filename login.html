@@ -131,6 +131,38 @@ document.getElementById('loginForm').addEventListener('submit', async function(e
     }
 });
 
+// Функция для проверки авторизации и обновления меню пользователя
+function updateAuthNav() {
+    const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
+    const user = JSON.parse(localStorage.getItem('user') || 'null');
+    const userMenuContent = document.getElementById('user-menu-content');
+    
+    if (userMenuContent) {
+        if (isAuthenticated && user) {
+            userMenuContent.innerHTML = `
+                <div class="user-info">
+                    <div class="user-name">${user.fio}</div>
+                    <div class="user-email">${user.email}</div>
+                </div>
+                <div class="dropdown-divider"></div>
+                <a href="#" class="dropdown-item" onclick="logout(); return false;">Выйти</a>
+            `;
+        } else {
+            userMenuContent.innerHTML = `
+                <a href="login.html" class="dropdown-item">Войти</a>
+                <a href="register.html" class="dropdown-item">Регистрация</a>
+            `;
+        }
+    }
+}
+
+// Функция выхода
+function logout() {
+    localStorage.removeItem('user');
+    localStorage.removeItem('isAuthenticated');
+    updateAuthNav();
+}
+
 // Функция для открытия/закрытия меню пользователя
 function toggleUserMenu() {
     const dropdown = document.getElementById('user-dropdown');
@@ -154,17 +186,12 @@ document.addEventListener('click', function(event) {
 // Функция перехода в корзину
 function goToCart(event) {
     event.preventDefault();
-    const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
-    
-    if (!isAuthenticated) {
-        // Если пользователь не авторизован, перенаправляем на страницу входа
-        window.location.href = 'login.html';
-    } else {
-        // Если авторизован, можно перейти на страницу корзины (пока заглушка)
-        // В будущем здесь будет: window.location.href = 'cart.html';
-        alert('Корзина (функция в разработке)');
-    }
+    window.location.href = 'cart.html';
 }
+
+document.addEventListener('DOMContentLoaded', function() {
+    updateAuthNav();
+});
 </script>
 
 </body>

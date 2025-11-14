@@ -176,9 +176,46 @@ app.post("/auth/login", (req, res) => {
                 return res.status(401).json({ error: "Неверный email или пароль" });
             }
             
+            const storedPassword = user.password || "";
+            const isHashed = typeof storedPassword === "string" && storedPassword.startsWith("$2");
+
+            const respondWithUser = () => {
+                const { password: _, ...userWithoutPassword } = user;
+                res.json({
+                    success: true,
+                    message: "Авторизация успешна",
+                    user: userWithoutPassword
+                });
+            };
+
+            const handleLegacyPassword = () => {
+                if (storedPassword === password) {
+                    bcrypt.hash(password, 10, (hashErr, newHash) => {
+                        if (!hashErr) {
+                            db.run("UPDATE users SET password = ? WHERE id = ?", [newHash, user.id], () => {
+                                user.password = newHash;
+                                respondWithUser();
+                            });
+                        } else {
+                            respondWithUser();
+                        }
+                    });
+                } else {
+                    return res.status(401).json({ error: "Неверный email или пароль" });
+                }
+            };
+
+            if (!storedPassword) {
+                return res.status(401).json({ error: "Пароль для этого пользователя не задан. Обновите пароль через регистрацию." });
+            }
+
+            if (!isHashed) {
+                return handleLegacyPassword();
+            }
+
             // Проверяем пароль с помощью bcrypt
-            bcrypt.compare(password, user.password, (err, isValid) => {
-                if (err) {
+            bcrypt.compare(password, storedPassword, (compareErr, isValid) => {
+                if (compareErr) {
                     return res.status(500).json({ error: "Ошибка при проверке пароля" });
                 }
                 
@@ -186,13 +223,7 @@ app.post("/auth/login", (req, res) => {
                     return res.status(401).json({ error: "Неверный email или пароль" });
                 }
                 
-                // Возвращаем данные пользователя (без пароля)
-                const { password: _, ...userWithoutPassword } = user;
-                res.json({ 
-                    success: true, 
-                    message: "Авторизация успешна",
-                    user: userWithoutPassword 
-                });
+                respondWithUser();
             });
         }
     );

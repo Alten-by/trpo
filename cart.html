@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Корзина - SwiftBuy</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="main-nav">
+    <div class="nav-brand">
+        <h1><a href="index.html" style="color: inherit; text-decoration: none;">SwiftBuy</a></h1>
+    </div>
+    <div class="nav-links">
+        <a href="index.html">Главная</a>
+        <a href="#" onclick="event.preventDefault();">Корзина</a>
+        <a href="index.html">Доставка и оплата</a>
+        <a href="about.html">О нас</a>
+        <div class="nav-search">
+            <div class="search-wrapper">
+                <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <path d="m21 21-4.35-4.35"></path>
+                </svg>
+                <input type="text" name="Search" class="search-input" placeholder="Поиск товаров..." autocomplete="off">
+                <button class="search-clear" id="search-clear" style="display: none;">×</button>
+            </div>
+        </div>
+        <div class="user-menu-container">
+            <button class="user-icon-btn" id="user-icon-btn" onclick="toggleUserMenu()">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="12" cy="7" r="4"></circle>
+                </svg>
+            </button>
+            <div class="user-dropdown" id="user-dropdown">
+                <div id="user-menu-content">
+                    <!-- Содержимое заполняется динамически -->
+                </div>
+            </div>
+        </div>
+    </div>
+</nav>
+
+<main class="cart-page">
+    <div class="cart-header">
+        <h1>Корзина</h1>
+        <button class="link-btn" id="clear-cart-btn">Очистить корзину</button>
+    </div>
+    <div class="cart-layout" id="cart-layout">
+        <div class="cart-items" id="cart-items">
+            <div class="cart-empty">
+                <h2>Ваша корзина пуста</h2>
+                <p>Загляните в каталог, чтобы выбрать подходящий товар.</p>
+                <a href="index.html" class="primary-btn-link">Перейти к покупкам</a>
+            </div>
+        </div>
+        <aside class="cart-summary" id="cart-summary">
+            <h2>Итого</h2>
+            <div class="summary-row">
+                <span>Товары</span>
+                <span id="summary-items-count">0</span>
+            </div>
+            <div class="summary-row">
+                <span>Сумма</span>
+                <span id="summary-total">0 руб.</span>
+            </div>
+            <p class="summary-note">Авторизуйтесь, чтобы оформить заказ.</p>
+            <button class="primary-btn" id="checkout-btn">Перейти к оформлению</button>
+        </aside>
+    </div>
+</main>
+
+<footer>
+    <div class="footer-content">
+        <div class="footer-description">
+            <p>Основанные на передовых технологиях и инновационных решениях, устройства SwiftBuy позволяют вам пользоваться последними достижениями технического прогресса вместе с проверенной надежностью ведущих мировых брендов. Каждое устройство в нашем каталоге проходит многоуровневую проверку качества, что гарантирует безупречную работу и долговечность эксплуатации.</p>
+        </div>
+        <p class="footer-copyright">&copy; 2025 SwiftBuy. Все права защищены.</p>
+    </div>
+</footer>
+
+<script>
+const PLACEHOLDER_IMAGE = 'https://via.placeholder.com/600x600?text=SwiftBuy';
+
+function updateAuthNav() {
+    const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
+    const user = JSON.parse(localStorage.getItem('user') || 'null');
+    const userMenuContent = document.getElementById('user-menu-content');
+
+    if (!userMenuContent) return;
+
+    if (isAuthenticated && user) {
+        userMenuContent.innerHTML = `
+            <div class="user-info">
+                <div class="user-name">${user.fio}</div>
+                <div class="user-email">${user.email}</div>
+            </div>
+            <div class="dropdown-divider"></div>
+            <a href="#" class="dropdown-item" onclick="logout(); return false;">Выйти</a>
+        `;
+    } else {
+        userMenuContent.innerHTML = `
+            <a href="login.html" class="dropdown-item">Войти</a>
+            <a href="register.html" class="dropdown-item">Регистрация</a>
+        `;
+    }
+}
+
+function toggleUserMenu() {
+    const dropdown = document.getElementById('user-dropdown');
+    if (dropdown) {
+        dropdown.classList.toggle('show');
+    }
+}
+
+document.addEventListener('click', function(event) {
+    const userMenuContainer = document.querySelector('.user-menu-container');
+    const dropdown = document.getElementById('user-dropdown');
+    
+    if (userMenuContainer && !userMenuContainer.contains(event.target)) {
+        if (dropdown) {
+            dropdown.classList.remove('show');
+        }
+    }
+});
+
+function logout() {
+    localStorage.removeItem('user');
+    localStorage.removeItem('isAuthenticated');
+    updateAuthNav();
+    const dropdown = document.getElementById('user-dropdown');
+    if (dropdown) {
+        dropdown.classList.remove('show');
+    }
+}
+
+function setupSearchStub() {
+    const searchInput = document.querySelector('.search-input');
+    const searchClear = document.getElementById('search-clear');
+
+    if (!searchInput || !searchClear) return;
+
+    searchInput.addEventListener('input', function(e) {
+        const value = e.target.value.trim();
+        searchClear.style.display = value.length ? 'flex' : 'none';
+    });
+
+    searchClear.addEventListener('click', function() {
+        searchInput.value = '';
+        searchClear.style.display = 'none';
+        searchInput.focus();
+    });
+}
+
+function safeGetCart() {
+    let cart = [];
+    try {
+        cart = JSON.parse(localStorage.getItem('cart') || '[]');
+    } catch (error) {
+        cart = [];
+    }
+
+    if (!Array.isArray(cart)) {
+        return [];
+    }
+
+    if (cart.length > 0 && typeof cart[0] === 'number') {
+        cart = cart.map(id => ({
+            id,
+            name: 'Товар',
+            price: 0,
+            image: PLACEHOLDER_IMAGE,
+            quantity: 1
+        }));
+    }
+
+    return cart
+        .filter(item => item && typeof item.id !== 'undefined')
+        .map(item => ({
+            id: item.id,
+            name: item.name || 'Товар',
+            price: Number(item.price) || 0,
+            image: item.image || PLACEHOLDER_IMAGE,
+            quantity: Number.isFinite(Number(item.quantity)) && Number(item.quantity) > 0 ? Number(item.quantity) : 1
+        }));
+}
+
+function renderCart() {
+    const itemsContainer = document.getElementById('cart-items');
+    const summaryContainer = document.getElementById('cart-summary');
+    const cart = safeGetCart();
+
+    if (!itemsContainer || !summaryContainer) return;
+
+    if (!cart.length) {
+        itemsContainer.innerHTML = `
+            <div class="cart-empty">
+                <h2>Ваша корзина пуста</h2>
+                <p>Загляните в каталог, чтобы выбрать подходящий товар.</p>
+                <a href="index.html" class="primary-btn-link">Перейти к покупкам</a>
+            </div>
+        `;
+        updateSummary(0, 0);
+        return;
+    }
+
+    itemsContainer.innerHTML = cart.map(item => `
+        <div class="cart-item" data-id="${item.id}">
+            <div class="cart-item-image">
+                <img src="${item.image || PLACEHOLDER_IMAGE}" alt="${item.name}" onerror="this.src='${PLACEHOLDER_IMAGE}'">
+            </div>
+            <div class="cart-item-info">
+                <h3>${item.name}</h3>
+                <p class="cart-item-price">${item.price.toFixed(2)} руб.</p>
+                <div class="cart-item-actions">
+                    <div class="quantity-selector compact">
+                        <button type="button" class="quantity-btn" data-action="minus">−</button>
+                        <input type="number" class="quantity-input" value="${item.quantity}" min="1">
+                        <button type="button" class="quantity-btn" data-action="plus">+</button>
+                    </div>
+                    <button class="link-btn remove-btn">Удалить</button>
+                </div>
+            </div>
+        </div>
+    `).join('');
+
+    updateSummary(
+        cart.reduce((acc, item) => acc + item.quantity, 0),
+        cart.reduce((acc, item) => acc + item.price * item.quantity, 0)
+    );
+}
+
+function updateSummary(totalItems, totalPrice) {
+    const itemsCountElement = document.getElementById('summary-items-count');
+    const totalElement = document.getElementById('summary-total');
+
+    if (itemsCountElement) {
+        itemsCountElement.textContent = totalItems;
+    }
+    if (totalElement) {
+        totalElement.textContent = `${totalPrice.toFixed(2)} руб.`;
+    }
+}
+
+function attachCartEvents() {
+    const itemsContainer = document.getElementById('cart-items');
+    const clearCartBtn = document.getElementById('clear-cart-btn');
+    const checkoutBtn = document.getElementById('checkout-btn');
+
+    if (itemsContainer) {
+        itemsContainer.addEventListener('click', function(event) {
+            const target = event.target;
+            const cartItem = target.closest('.cart-item');
+            if (!cartItem) return;
+
+            const productId = Number(cartItem.dataset.id);
+            if (!productId) return;
+
+            if (target.classList.contains('quantity-btn')) {
+                const input = cartItem.querySelector('.quantity-input');
+                const action = target.dataset.action;
+                let value = Number(input.value) || 1;
+
+                if (action === 'minus') {
+                    value = Math.max(1, value - 1);
+                } else if (action === 'plus') {
+                    value += 1;
+                }
+                input.value = value;
+                updateItemQuantity(productId, value);
+            }
+
+            if (target.classList.contains('remove-btn')) {
+                removeItemFromCart(productId);
+            }
+        });
+
+        itemsContainer.addEventListener('change', function(event) {
+            if (!event.target.classList.contains('quantity-input')) return;
+            const cartItem = event.target.closest('.cart-item');
+            if (!cartItem) return;
+
+            const productId = Number(cartItem.dataset.id);
+            let value = Math.max(1, Number(event.target.value) || 1);
+            event.target.value = value;
+            updateItemQuantity(productId, value);
+        });
+    }
+
+    if (clearCartBtn) {
+        clearCartBtn.addEventListener('click', function() {
+            localStorage.setItem('cart', JSON.stringify([]));
+            renderCart();
+            showCartToast('Корзина очищена');
+        });
+    }
+
+    if (checkoutBtn) {
+        checkoutBtn.addEventListener('click', function() {
+            const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
+            if (!isAuthenticated) {
+                showCartToast('Войдите в аккаунт для оформления заказа');
+                window.location.href = 'login.html';
+                return;
+            }
+
+            showCartToast('Оформление заказа скоро будет доступно');
+        });
+    }
+}
+
+function updateItemQuantity(productId, quantity) {
+    const cart = safeGetCart();
+    const item = cart.find(item => item.id === productId);
+    if (item) {
+        item.quantity = quantity;
+        localStorage.setItem('cart', JSON.stringify(cart));
+        renderCart();
+    }
+}
+
+function removeItemFromCart(productId) {
+    let cart = safeGetCart();
+    cart = cart.filter(item => item.id !== productId);
+    localStorage.setItem('cart', JSON.stringify(cart));
+    renderCart();
+    showCartToast('Товар удалён из корзины');
+}
+
+function showCartToast(message) {
+    let toastContainer = document.querySelector('.cart-toast-container');
+    if (!toastContainer) {
+        toastContainer = document.createElement('div');
+        toastContainer.className = 'cart-toast-container';
+        document.body.appendChild(toastContainer);
+    }
+
+    const toast = document.createElement('div');
+    toast.className = 'cart-toast';
+    toast.textContent = message;
+    toastContainer.appendChild(toast);
+
+    requestAnimationFrame(() => toast.classList.add('show'));
+
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 300);
+    }, 2500);
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    updateAuthNav();
+    setupSearchStub();
+    renderCart();
+    attachCartEvents();
+});
+</script>
+
+</body>
+</html>
+
+

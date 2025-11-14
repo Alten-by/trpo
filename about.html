@@ -127,16 +127,7 @@ function logout() {
 // Функция перехода в корзину
 function goToCart(event) {
     event.preventDefault();
-    const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
-    
-    if (!isAuthenticated) {
-        // Если пользователь не авторизован, перенаправляем на страницу входа
-        window.location.href = 'login.html';
-    } else {
-        // Если авторизован, можно перейти на страницу корзины (пока заглушка)
-        // В будущем здесь будет: window.location.href = 'cart.html';
-        alert('Корзина (функция в разработке)');
-    }
+    window.location.href = 'cart.html';
 }
 
 // Инициализация при загрузке страницы
