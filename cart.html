@@ -154,45 +154,61 @@ function setupSearchStub() {
     });
 }
 
-function safeGetCart() {
-    let cart = [];
-    try {
-        cart = JSON.parse(localStorage.getItem('cart') || '[]');
-    } catch (error) {
-        cart = [];
+// Получить текущего пользователя
+function getCurrentUser() {
+    const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
+    if (!isAuthenticated) {
+        return null;
     }
+    try {
+        const user = JSON.parse(localStorage.getItem('user') || 'null');
+        return user;
+    } catch (error) {
+        return null;
+    }
+}
 
-    if (!Array.isArray(cart)) {
+// Получить корзину из БД
+async function safeGetCart() {
+    const user = getCurrentUser();
+    if (!user || !user.id) {
         return [];
     }
 
-    if (cart.length > 0 && typeof cart[0] === 'number') {
-        cart = cart.map(id => ({
-            id,
-            name: 'Товар',
-            price: 0,
-            image: PLACEHOLDER_IMAGE,
-            quantity: 1
-        }));
+    try {
+        const response = await fetch(`http://localhost:3000/api/cart?user_id=${user.id}`);
+        if (!response.ok) {
+            throw new Error('Ошибка при загрузке корзины');
+        }
+        const cart = await response.json();
+        return Array.isArray(cart) ? cart : [];
+    } catch (error) {
+        console.error('Ошибка при получении корзины:', error);
+        return [];
     }
-
-    return cart
-        .filter(item => item && typeof item.id !== 'undefined')
-        .map(item => ({
-            id: item.id,
-            name: item.name || 'Товар',
-            price: Number(item.price) || 0,
-            image: item.image || PLACEHOLDER_IMAGE,
-            quantity: Number.isFinite(Number(item.quantity)) && Number(item.quantity) > 0 ? Number(item.quantity) : 1
-        }));
 }
 
-function renderCart() {
+async function renderCart() {
     const itemsContainer = document.getElementById('cart-items');
     const summaryContainer = document.getElementById('cart-summary');
-    const cart = safeGetCart();
 
     if (!itemsContainer || !summaryContainer) return;
+
+    // Проверяем авторизацию
+    const user = getCurrentUser();
+    if (!user || !user.id) {
+        itemsContainer.innerHTML = `
+            <div class="cart-empty">
+                <h2>Войдите в аккаунт, чтобы просмотреть корзину</h2>
+                <p>Для работы с корзиной необходимо авторизоваться.</p>
+                <a href="login.html" class="primary-btn-link">Войти</a>
+            </div>
+        `;
+        updateSummary(0, 0);
+        return;
+    }
+
+    const cart = await safeGetCart();
 
     if (!cart.length) {
         itemsContainer.innerHTML = `
@@ -290,17 +306,35 @@ function attachCartEvents() {
     }
 
     if (clearCartBtn) {
-        clearCartBtn.addEventListener('click', function() {
-            localStorage.setItem('cart', JSON.stringify([]));
-            renderCart();
-            showCartToast('Корзина очищена');
+        clearCartBtn.addEventListener('click', async function() {
+            const user = getCurrentUser();
+            if (!user || !user.id) {
+                showCartToast('Войдите в аккаунт для работы с корзиной');
+                return;
+            }
+
+            try {
+                const response = await fetch(`http://localhost:3000/api/cart?user_id=${user.id}`, {
+                    method: 'DELETE'
+                });
+
+                if (!response.ok) {
+                    throw new Error('Ошибка при очистке корзины');
+                }
+
+                await renderCart();
+                showCartToast('Корзина очищена');
+            } catch (error) {
+                console.error('Ошибка при очистке корзины:', error);
+                showCartToast('Не удалось очистить корзину. Попробуйте позже.');
+            }
         });
     }
 
     if (checkoutBtn) {
         checkoutBtn.addEventListener('click', function() {
-            const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
-            if (!isAuthenticated) {
+            const user = getCurrentUser();
+            if (!user || !user.id) {
                 showCartToast('Войдите в аккаунт для оформления заказа');
                 window.location.href = 'login.html';
                 return;
@@ -311,22 +345,59 @@ function attachCartEvents() {
     }
 }
 
-function updateItemQuantity(productId, quantity) {
-    const cart = safeGetCart();
-    const item = cart.find(item => item.id === productId);
-    if (item) {
-        item.quantity = quantity;
-        localStorage.setItem('cart', JSON.stringify(cart));
-        renderCart();
+async function updateItemQuantity(productId, quantity) {
+    const user = getCurrentUser();
+    if (!user || !user.id) {
+        showCartToast('Войдите в аккаунт для работы с корзиной');
+        return;
+    }
+
+    try {
+        const response = await fetch(`http://localhost:3000/api/cart/${productId}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                user_id: user.id,
+                quantity: quantity
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error('Ошибка при обновлении количества');
+        }
+
+        await renderCart();
+    } catch (error) {
+        console.error('Ошибка при обновлении количества:', error);
+        showCartToast('Не удалось обновить количество. Попробуйте позже.');
+        await renderCart(); // Перезагружаем корзину в случае ошибки
     }
 }
 
-function removeItemFromCart(productId) {
-    let cart = safeGetCart();
-    cart = cart.filter(item => item.id !== productId);
-    localStorage.setItem('cart', JSON.stringify(cart));
-    renderCart();
-    showCartToast('Товар удалён из корзины');
+async function removeItemFromCart(productId) {
+    const user = getCurrentUser();
+    if (!user || !user.id) {
+        showCartToast('Войдите в аккаунт для работы с корзиной');
+        return;
+    }
+
+    try {
+        const response = await fetch(`http://localhost:3000/api/cart/${productId}?user_id=${user.id}`, {
+            method: 'DELETE'
+        });
+
+        if (!response.ok) {
+            throw new Error('Ошибка при удалении товара');
+        }
+
+        await renderCart();
+        showCartToast('Товар удалён из корзины');
+    } catch (error) {
+        console.error('Ошибка при удалении товара:', error);
+        showCartToast('Не удалось удалить товар. Попробуйте позже.');
+    }
 }
 
 function showCartToast(message) {

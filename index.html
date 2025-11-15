@@ -250,74 +250,63 @@ function goToPage(page) {
     window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-// Функция добавления в корзину
-function getPreparedCart() {
-    let cartFromStorage = [];
+// Получить текущего пользователя
+function getCurrentUser() {
+    const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
+    if (!isAuthenticated) {
+        return null;
+    }
     try {
-        cartFromStorage = JSON.parse(localStorage.getItem('cart') || '[]');
+        const user = JSON.parse(localStorage.getItem('user') || 'null');
+        return user;
     } catch (error) {
-        cartFromStorage = [];
+        return null;
     }
-
-    if (!Array.isArray(cartFromStorage)) {
-        return [];
-    }
-
-    // Преобразуем устаревший формат с идентификаторами в объекты
-    if (cartFromStorage.length > 0 && typeof cartFromStorage[0] === 'number') {
-        const migratedCart = cartFromStorage.map(id => {
-            const product = allProducts.find(p => p.id === id) || {};
-            return {
-                id,
-                name: product.name || 'Товар',
-                price: Number(product.price) || 0,
-                image: product.image_url || PLACEHOLDER_IMAGE,
-                quantity: 1
-            };
-        });
-        localStorage.setItem('cart', JSON.stringify(migratedCart));
-        return migratedCart;
-    }
-
-    return cartFromStorage
-        .filter(item => item && typeof item.id !== 'undefined')
-        .map(item => {
-            const product = allProducts.find(p => p.id === item.id) || {};
-            return {
-                id: item.id,
-                name: item.name || product.name || 'Товар',
-                price: Number(item.price) || Number(product.price) || 0,
-                image: item.image || product.image_url || PLACEHOLDER_IMAGE,
-                quantity: Number(item.quantity) > 0 ? Number(item.quantity) : 1
-            };
-        });
 }
 
-function addToCart(productId, quantity = 1) {
+async function addToCart(productId, quantity = 1) {
     const product = allProducts.find(p => p.id === productId);
     if (!product) {
         showCartToast('Не удалось добавить товар: не найден.');
         return;
     }
 
-    const normalizedQuantity = Math.max(1, Number(quantity) || 1);
-    let cart = getPreparedCart();
-    const existingItem = cart.find(item => item.id === productId);
-
-    if (existingItem) {
-        existingItem.quantity += normalizedQuantity;
-    } else {
-        cart.push({
-            id: product.id,
-            name: product.name,
-            price: Number(product.price) || 0,
-            image: product.image_url || PLACEHOLDER_IMAGE,
-            quantity: normalizedQuantity
-        });
+    // Проверяем авторизацию
+    const user = getCurrentUser();
+    if (!user || !user.id) {
+        showCartToast('Войдите в аккаунт, чтобы добавить товар в корзину');
+        setTimeout(() => {
+            window.location.href = 'login.html';
+        }, 1500);
+        return;
     }
 
-    localStorage.setItem('cart', JSON.stringify(cart));
-    showCartToast(`«${product.name}» добавлен${normalizedQuantity > 1 ? 'ы' : ''} в корзину`);
+    const normalizedQuantity = Math.max(1, Number(quantity) || 1);
+
+    try {
+        const response = await fetch('http://localhost:3000/api/cart', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                user_id: user.id,
+                product_id: productId,
+                quantity: normalizedQuantity
+            })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || 'Ошибка при добавлении товара');
+        }
+
+        showCartToast(`«${product.name}» добавлен${normalizedQuantity > 1 ? 'ы' : ''} в корзину`);
+    } catch (error) {
+        console.error('Ошибка при добавлении в корзину:', error);
+        showCartToast('Не удалось добавить товар в корзину. Попробуйте позже.');
+    }
 }
 
 // Поиск товаров

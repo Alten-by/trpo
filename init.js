@@ -52,6 +52,18 @@ db.serialize(() => {
         FOREIGN KEY(request_id) REFERENCES requests(id),
         FOREIGN KEY(product_id) REFERENCES products(id)
     )`);
+
+    db.run(`CREATE TABLE IF NOT EXISTS cart_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        product_id INTEGER NOT NULL,
+        quantity INTEGER NOT NULL DEFAULT 1,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(user_id) REFERENCES users(id),
+        FOREIGN KEY(product_id) REFERENCES products(id),
+        UNIQUE(user_id, product_id)
+    )`);
 });
 
 db.close();

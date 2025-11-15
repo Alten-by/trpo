@@ -229,6 +229,193 @@ app.post("/auth/login", (req, res) => {
     );
 });
 
+// Создание таблицы cart_items, если её еще нет
+db.serialize(() => {
+    db.run(`CREATE TABLE IF NOT EXISTS cart_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        product_id INTEGER NOT NULL,
+        quantity INTEGER NOT NULL DEFAULT 1,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(user_id) REFERENCES users(id),
+        FOREIGN KEY(product_id) REFERENCES products(id),
+        UNIQUE(user_id, product_id)
+    )`);
+});
+
+// Получить корзину пользователя
+app.get("/api/cart", (req, res) => {
+    const { user_id } = req.query;
+    
+    if (!user_id) {
+        return res.status(400).json({ error: "user_id обязателен" });
+    }
+    
+    // Получаем корзину с полной информацией о товарах
+    db.all(`
+        SELECT 
+            ci.product_id as id,
+            ci.quantity,
+            p.name,
+            p.price,
+            p.image_url as image,
+            p.article,
+            p.category
+        FROM cart_items ci
+        JOIN products p ON ci.product_id = p.id
+        WHERE ci.user_id = ?
+        ORDER BY ci.created_at DESC
+    `, [user_id], (err, rows) => {
+        if (err) {
+            return res.status(500).json({ error: err.message });
+        }
+        
+        // Преобразуем результат в нужный формат
+        const cart = rows.map(row => ({
+            id: row.id,
+            name: row.name,
+            price: Number(row.price) || 0,
+            image: row.image || null,
+            quantity: Number(row.quantity) || 1,
+            article: row.article,
+            category: row.category
+        }));
+        
+        res.json(cart);
+    });
+});
+
+// Добавить товар в корзину или обновить количество
+app.post("/api/cart", (req, res) => {
+    const { user_id, product_id, quantity } = req.body;
+    
+    if (!user_id || !product_id) {
+        return res.status(400).json({ error: "user_id и product_id обязательны" });
+    }
+    
+    const qty = Math.max(1, Number(quantity) || 1);
+    
+    // Проверяем, существует ли товар
+    db.get("SELECT id FROM products WHERE id = ?", [product_id], (err, product) => {
+        if (err) {
+            return res.status(500).json({ error: err.message });
+        }
+        
+        if (!product) {
+            return res.status(404).json({ error: "Товар не найден" });
+        }
+        
+        // Проверяем, есть ли уже этот товар в корзине
+        db.get("SELECT id, quantity FROM cart_items WHERE user_id = ? AND product_id = ?", 
+            [user_id, product_id], 
+            (err, existingItem) => {
+                if (err) {
+                    return res.status(500).json({ error: err.message });
+                }
+                
+                if (existingItem) {
+                    // Обновляем количество (добавляем к существующему)
+                    const newQuantity = existingItem.quantity + qty;
+                    db.run(
+                        "UPDATE cart_items SET quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                        [newQuantity, existingItem.id],
+                        function(err) {
+                            if (err) {
+                                return res.status(500).json({ error: err.message });
+                            }
+                            res.json({ success: true, message: "Количество обновлено", quantity: newQuantity });
+                        }
+                    );
+                } else {
+                    // Добавляем новый товар
+                    db.run(
+                        "INSERT INTO cart_items (user_id, product_id, quantity) VALUES (?, ?, ?)",
+                        [user_id, product_id, qty],
+                        function(err) {
+                            if (err) {
+                                return res.status(500).json({ error: err.message });
+                            }
+                            res.json({ success: true, message: "Товар добавлен в корзину", id: this.lastID });
+                        }
+                    );
+                }
+            }
+        );
+    });
+});
+
+// Обновить количество товара в корзине
+app.put("/api/cart/:productId", (req, res) => {
+    const { productId } = req.params;
+    const { user_id, quantity } = req.body;
+    
+    if (!user_id) {
+        return res.status(400).json({ error: "user_id обязателен" });
+    }
+    
+    const qty = Math.max(1, Number(quantity) || 1);
+    
+    db.run(
+        "UPDATE cart_items SET quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND product_id = ?",
+        [qty, user_id, productId],
+        function(err) {
+            if (err) {
+                return res.status(500).json({ error: err.message });
+            }
+            
+            if (this.changes === 0) {
+                return res.status(404).json({ error: "Товар не найден в корзине" });
+            }
+            
+            res.json({ success: true, message: "Количество обновлено", quantity: qty });
+        }
+    );
+});
+
+// Удалить товар из корзины
+app.delete("/api/cart/:productId", (req, res) => {
+    const { productId } = req.params;
+    const { user_id } = req.query;
+    
+    if (!user_id) {
+        return res.status(400).json({ error: "user_id обязателен" });
+    }
+    
+    db.run(
+        "DELETE FROM cart_items WHERE user_id = ? AND product_id = ?",
+        [user_id, productId],
+        function(err) {
+            if (err) {
+                return res.status(500).json({ error: err.message });
+            }
+            
+            if (this.changes === 0) {
+                return res.status(404).json({ error: "Товар не найден в корзине" });
+            }
+            
+            res.json({ success: true, message: "Товар удалён из корзины" });
+        }
+    );
+});
+
+// Очистить корзину пользователя
+app.delete("/api/cart", (req, res) => {
+    const { user_id } = req.query;
+    
+    if (!user_id) {
+        return res.status(400).json({ error: "user_id обязателен" });
+    }
+    
+    db.run("DELETE FROM cart_items WHERE user_id = ?", [user_id], function(err) {
+        if (err) {
+            return res.status(500).json({ error: err.message });
+        }
+        
+        res.json({ success: true, message: "Корзина очищена", deleted: this.changes });
+    });
+});
+
 app.listen(3000, () => {
     console.log("Сервер запущен: http://localhost:3000");
 });
