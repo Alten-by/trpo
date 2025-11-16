@@ -15,7 +15,7 @@
     <div class="nav-links">
         <a href="index.html">Главная</a>
         <a href="#" onclick="goToCart(event); return false;">Корзина</a>
-        <a href="index.html">Доставка и оплата</a>
+        <a href="#" onclick="goToRequests(event); return false;">Заявки</a>
         <a href="about.html">О нас</a>
         <div class="nav-search">
             <div class="search-wrapper">
@@ -259,6 +259,7 @@ function updateAuthNav() {
                 <div class="user-email">${user.email}</div>
             </div>
             <div class="dropdown-divider"></div>
+            <a href="profile.html" class="dropdown-item">Личный кабинет</a>
             <a href="#" class="dropdown-item" onclick="logout(); return false;">Выйти</a>
         `;
     } else {
@@ -300,6 +301,47 @@ function logout() {
 function goToCart(event) {
     event.preventDefault();
     window.location.href = 'cart.html';
+}
+
+// Функция перехода к заявкам
+function goToRequests(event) {
+    event.preventDefault();
+    const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
+    const user = JSON.parse(localStorage.getItem('user') || 'null');
+    
+    if (!isAuthenticated || !user) {
+        window.location.href = 'login.html';
+        return;
+    }
+    
+    // Показываем уведомление о том, что функция в разработке
+    showCartToast('Функция в разработке');
+}
+
+// Функция для показа toast-уведомлений
+function showCartToast(message) {
+    let toastContainer = document.querySelector('.cart-toast-container');
+    if (!toastContainer) {
+        toastContainer = document.createElement('div');
+        toastContainer.className = 'cart-toast-container';
+        document.body.appendChild(toastContainer);
+    }
+
+    const toast = document.createElement('div');
+    toast.className = 'cart-toast';
+    toast.textContent = message;
+    toastContainer.appendChild(toast);
+
+    requestAnimationFrame(() => {
+        toast.classList.add('show');
+    });
+
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => {
+            toast.remove();
+        }, 300);
+    }, 2500);
 }
 
 function setupSearchStub() {

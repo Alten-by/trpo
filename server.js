@@ -416,6 +416,170 @@ app.delete("/api/cart", (req, res) => {
     });
 });
 
+// Изменить email (логин) пользователя
+app.put("/auth/profile/email", (req, res) => {
+    const { userId, newEmail, password } = req.body;
+    
+    // Валидация
+    if (!userId || !newEmail || !password) {
+        return res.status(400).json({ error: "userId, newEmail и password обязательны" });
+    }
+    
+    // Проверка формата email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(newEmail)) {
+        return res.status(400).json({ error: "Неверный формат email" });
+    }
+    
+    // Получаем пользователя
+    db.get("SELECT id, email, password FROM users WHERE id = ?", [userId], (err, user) => {
+        if (err) {
+            return res.status(500).json({ error: err.message });
+        }
+        
+        if (!user) {
+            return res.status(404).json({ error: "Пользователь не найден" });
+        }
+        
+        // Проверяем, что новый email отличается от текущего
+        if (user.email === newEmail) {
+            return res.status(400).json({ error: "Новый email совпадает с текущим" });
+        }
+        
+        // Проверяем пароль
+        const storedPassword = user.password || "";
+        const isHashed = typeof storedPassword === "string" && storedPassword.startsWith("$2");
+        
+        const verifyPassword = (callback) => {
+            if (!storedPassword) {
+                return callback(false);
+            }
+            
+            if (!isHashed) {
+                // Старый формат пароля (plain text)
+                return callback(storedPassword === password);
+            }
+            
+            // Проверяем пароль с помощью bcrypt
+            bcrypt.compare(password, storedPassword, (compareErr, isValid) => {
+                if (compareErr) {
+                    return callback(false);
+                }
+                callback(isValid);
+            });
+        };
+        
+        verifyPassword((isValid) => {
+            if (!isValid) {
+                return res.status(401).json({ error: "Неверный пароль" });
+            }
+            
+            // Проверяем, не занят ли новый email другим пользователем
+            db.get("SELECT id FROM users WHERE email = ? AND id != ?", [newEmail, userId], (err, existingUser) => {
+                if (err) {
+                    return res.status(500).json({ error: err.message });
+                }
+                
+                if (existingUser) {
+                    return res.status(400).json({ error: "Пользователь с таким email уже существует" });
+                }
+                
+                // Обновляем email
+                db.run("UPDATE users SET email = ? WHERE id = ?", [newEmail, userId], function(err) {
+                    if (err) {
+                        return res.status(500).json({ error: err.message });
+                    }
+                    
+                    res.json({
+                        success: true,
+                        message: "Email успешно изменен",
+                        newEmail: newEmail
+                    });
+                });
+            });
+        });
+    });
+});
+
+// Изменить пароль пользователя
+app.put("/auth/profile/password", (req, res) => {
+    const { userId, currentPassword, newPassword } = req.body;
+    
+    // Валидация
+    if (!userId || !currentPassword || !newPassword) {
+        return res.status(400).json({ error: "userId, currentPassword и newPassword обязательны" });
+    }
+    
+    // Проверка длины нового пароля
+    if (newPassword.length < 6) {
+        return res.status(400).json({ error: "Пароль должен содержать минимум 6 символов" });
+    }
+    
+    // Проверяем, что новый пароль отличается от текущего
+    if (currentPassword === newPassword) {
+        return res.status(400).json({ error: "Новый пароль должен отличаться от текущего" });
+    }
+    
+    // Получаем пользователя
+    db.get("SELECT id, password FROM users WHERE id = ?", [userId], (err, user) => {
+        if (err) {
+            return res.status(500).json({ error: err.message });
+        }
+        
+        if (!user) {
+            return res.status(404).json({ error: "Пользователь не найден" });
+        }
+        
+        // Проверяем текущий пароль
+        const storedPassword = user.password || "";
+        const isHashed = typeof storedPassword === "string" && storedPassword.startsWith("$2");
+        
+        const verifyPassword = (callback) => {
+            if (!storedPassword) {
+                return callback(false);
+            }
+            
+            if (!isHashed) {
+                // Старый формат пароля (plain text)
+                return callback(storedPassword === currentPassword);
+            }
+            
+            // Проверяем пароль с помощью bcrypt
+            bcrypt.compare(currentPassword, storedPassword, (compareErr, isValid) => {
+                if (compareErr) {
+                    return callback(false);
+                }
+                callback(isValid);
+            });
+        };
+        
+        verifyPassword((isValid) => {
+            if (!isValid) {
+                return res.status(401).json({ error: "Неверный текущий пароль" });
+            }
+            
+            // Хешируем новый пароль
+            bcrypt.hash(newPassword, 10, (err, hashedPassword) => {
+                if (err) {
+                    return res.status(500).json({ error: "Ошибка при хешировании пароля" });
+                }
+                
+                // Обновляем пароль
+                db.run("UPDATE users SET password = ? WHERE id = ?", [hashedPassword, userId], function(err) {
+                    if (err) {
+                        return res.status(500).json({ error: err.message });
+                    }
+                    
+                    res.json({
+                        success: true,
+                        message: "Пароль успешно изменен"
+                    });
+                });
+            });
+        });
+    });
+});
+
 app.listen(3000, () => {
     console.log("Сервер запущен: http://localhost:3000");
 });
