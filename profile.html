@@ -66,6 +66,14 @@
                     <span class="info-label">Телефон:</span>
                     <span class="info-value" id="user-phone">-</span>
                 </div>
+                <div class="info-row">
+                    <span class="info-label">Роль:</span>
+                    <span class="info-value" id="user-role">-</span>
+                </div>
+                <div class="info-row" id="company-row" style="display: none;">
+                    <span class="info-label">Компания:</span>
+                    <span class="info-value" id="user-company">-</span>
+                </div>
             </div>
         </div>
 
@@ -120,6 +128,7 @@
                 <button type="submit" class="auth-button">Изменить пароль</button>
             </form>
         </div>
+
     </div>
 </div>
 
@@ -133,10 +142,55 @@
 </footer>
 
 <script>
+const DEFAULT_COMPANY_NAME = 'LocalStore';
+const ROLE_TITLES = {
+    admin: 'Администратор',
+    supplier: 'Поставщик',
+    customer: 'Покупатель',
+    guest: 'Гость'
+};
+
+function getStoredUser() {
+    try {
+        return JSON.parse(localStorage.getItem('user') || 'null');
+    } catch (error) {
+        return null;
+    }
+}
+
+function getUserRole(user) {
+    if (!user) return 'guest';
+    return user.role || user.role_name || 'customer';
+}
+
+function getRoleTitle(role) {
+    return ROLE_TITLES[role] || 'Пользователь';
+}
+
+function isAdmin(user) {
+    return getUserRole(user) === 'admin';
+}
+
+function isSupplier(user) {
+    return getUserRole(user) === 'supplier';
+}
+
+function escapeHtml(value) {
+    if (value === null || value === undefined) {
+        return '';
+    }
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 // Проверка авторизации при загрузке страницы
 document.addEventListener('DOMContentLoaded', function() {
     const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
-    const user = JSON.parse(localStorage.getItem('user') || 'null');
+    const user = getStoredUser();
     
     if (!isAuthenticated || !user) {
         alert('Для доступа к личному кабинету необходимо войти в систему');
@@ -151,13 +205,26 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Загрузка информации о пользователе
 function loadUserInfo() {
-    const user = JSON.parse(localStorage.getItem('user') || 'null');
+    const user = getStoredUser();
     
     if (user) {
         document.getElementById('user-fio').textContent = user.fio || '-';
         document.getElementById('user-email').textContent = user.email || '-';
         document.getElementById('user-phone').textContent = user.phone || 'Не указан';
         document.getElementById('currentEmail').value = user.email || '';
+        const role = getUserRole(user);
+        document.getElementById('user-role').textContent = getRoleTitle(role);
+        const companyRow = document.getElementById('company-row');
+        const companyValue = document.getElementById('user-company');
+        if (companyRow && companyValue) {
+            if (role === 'supplier') {
+                companyRow.style.display = 'flex';
+                companyValue.textContent = user.company_name || DEFAULT_COMPANY_NAME;
+            } else {
+                companyRow.style.display = 'none';
+                companyValue.textContent = '-';
+            }
+        }
     }
 }
 
@@ -165,7 +232,7 @@ function loadUserInfo() {
 document.getElementById('changeEmailForm').addEventListener('submit', async function(e) {
     e.preventDefault();
     
-    const user = JSON.parse(localStorage.getItem('user') || 'null');
+    const user = getStoredUser();
     if (!user || !user.id) {
         alert('Ошибка: пользователь не найден');
         return;
@@ -251,7 +318,7 @@ document.getElementById('changeEmailForm').addEventListener('submit', async func
 document.getElementById('changePasswordForm').addEventListener('submit', async function(e) {
     e.preventDefault();
     
-    const user = JSON.parse(localStorage.getItem('user') || 'null');
+    const user = getStoredUser();
     if (!user || !user.id) {
         alert('Ошибка: пользователь не найден');
         return;
@@ -329,18 +396,28 @@ document.getElementById('changePasswordForm').addEventListener('submit', async f
 // Функция для проверки авторизации и обновления меню пользователя
 function updateAuthNav() {
     const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
-    const user = JSON.parse(localStorage.getItem('user') || 'null');
+    const user = getStoredUser();
     const userMenuContent = document.getElementById('user-menu-content');
     
     if (userMenuContent) {
         if (isAuthenticated && user) {
+            const role = getUserRole(user);
+            const companyBlock = role === 'supplier'
+                ? `<div class="user-company">${user.company_name || DEFAULT_COMPANY_NAME}</div>`
+                : '';
+            const adminLink = role === 'admin'
+                ? `<a href="admin.html" class="dropdown-item">Админ-панель</a>`
+                : '';
+
             userMenuContent.innerHTML = `
                 <div class="user-info">
                     <div class="user-name">${user.fio}</div>
                     <div class="user-email">${user.email}</div>
+                    ${companyBlock}
                 </div>
                 <div class="dropdown-divider"></div>
                 <a href="profile.html" class="dropdown-item">Личный кабинет</a>
+                ${adminLink}
                 <a href="#" class="dropdown-item" onclick="logout(); return false;">Выйти</a>
             `;
         } else {
@@ -390,7 +467,7 @@ function goToCart(event) {
 function goToRequests(event) {
     event.preventDefault();
     const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
-    const user = JSON.parse(localStorage.getItem('user') || 'null');
+    const user = getStoredUser();
     
     if (!isAuthenticated || !user) {
         window.location.href = 'login.html';

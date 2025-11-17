@@ -253,13 +253,21 @@ function updateAuthNav() {
     if (!userMenuContent) return;
 
     if (isAuthenticated && user) {
+        const role = user.role || user.role_name || 'customer';
+        const isSupplier = role === 'supplier';
+        const isAdmin = role === 'admin';
+        const companyBlock = isSupplier ? `<div class="user-company">${user.company_name || 'LocalStore'}</div>` : '';
+        const adminLink = isAdmin ? '<a href="admin.html" class="dropdown-item">Админ-панель</a>' : '';
+
         userMenuContent.innerHTML = `
             <div class="user-info">
                 <div class="user-name">${user.fio}</div>
                 <div class="user-email">${user.email}</div>
+                ${companyBlock}
             </div>
             <div class="dropdown-divider"></div>
             <a href="profile.html" class="dropdown-item">Личный кабинет</a>
+            ${adminLink}
             <a href="#" class="dropdown-item" onclick="logout(); return false;">Выйти</a>
         `;
     } else {

@@ -1,7 +1,7 @@
 const express = require("express");
 const sqlite3 = require("sqlite3").verbose();
 const cors = require("cors");
-const bcrypt = require('bcrypt');
+const bcrypt = require("bcrypt");
 
 const app = express();
 app.use(cors());
@@ -9,18 +9,129 @@ app.use(express.json());
 
 const db = new sqlite3.Database("./database.db");
 
-// Добавляем поле password в таблицу users, если его еще нет
-db.serialize(() => {
-    db.run(`ALTER TABLE users ADD COLUMN password TEXT`, (err) => {
-        // Игнорируем ошибку, если колонка уже существует
-        if (err && !err.message.includes('duplicate column')) {
-            console.log('Ошибка при добавлении колонки password:', err.message);
+const REQUIRED_ROLES = ["customer", "supplier", "admin"];
+const DEFAULT_COMPANY_NAME = "LocalStore";
+const ADMIN_USER = {
+    email: "toture11gg@gmail.com",
+    fio: "Главный администратор",
+    phone: null,
+    company_name: DEFAULT_COMPANY_NAME,
+    password: "Admin123!"
+};
+
+function addColumnIfMissing(tableName, columnName, definition) {
+    db.run(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`, (err) => {
+        if (err && !err.message.includes("duplicate column")) {
+            console.log(`Ошибка при добавлении колонки ${columnName}:`, err.message);
         }
     });
-});
+}
 
-// Создание таблицы products (если еще не создана)
+function seedRoles() {
+    REQUIRED_ROLES.forEach((role) => {
+        db.run(`INSERT OR IGNORE INTO roles (name) VALUES (?)`, [role]);
+    });
+}
+
+function getRoleId(roleName, callback) {
+    db.get(`SELECT id FROM roles WHERE name = ?`, [roleName], (err, row) => {
+        if (err) {
+            return callback(err);
+        }
+        callback(null, row ? row.id : null);
+    });
+}
+
+function ensureAdminUser() {
+    getRoleId("admin", (roleErr, adminRoleId) => {
+        if (roleErr || !adminRoleId) {
+            console.error("Не удалось получить роль администратора:", roleErr ? roleErr.message : "роль не найдена");
+            return;
+        }
+
+        db.get(`SELECT id, role_id FROM users WHERE email = ?`, [ADMIN_USER.email], (err, existingUser) => {
+            if (err) {
+                console.error("Ошибка при поиске администратора:", err.message);
+                return;
+            }
+
+            if (!existingUser) {
+                bcrypt.hash(ADMIN_USER.password, 10, (hashErr, hashedPassword) => {
+                    if (hashErr) {
+                        console.error("Ошибка при создании администратора:", hashErr.message);
+                        return;
+                    }
+
+                    db.run(
+                        `INSERT INTO users (fio, email, phone, password, role_id, company_name) VALUES (?, ?, ?, ?, ?, ?)`,
+                        [ADMIN_USER.fio, ADMIN_USER.email, ADMIN_USER.phone, hashedPassword, adminRoleId, ADMIN_USER.company_name],
+                        (insertErr) => {
+                            if (insertErr) {
+                                console.error("Ошибка при добавлении администратора:", insertErr.message);
+                            } else {
+                                console.log(`Администратор создан: ${ADMIN_USER.email}`);
+                            }
+                        }
+                    );
+                });
+            } else if (existingUser.role_id !== adminRoleId) {
+                db.run(`UPDATE users SET role_id = ? WHERE id = ?`, [adminRoleId, existingUser.id], (updateErr) => {
+                    if (updateErr) {
+                        console.error("Ошибка при обновлении роли администратора:", updateErr.message);
+                    }
+                });
+            }
+        });
+    });
+}
+
+function requireAdmin(adminId, res, onSuccess) {
+    if (!adminId) {
+        return res.status(400).json({ error: "adminId обязателен" });
+    }
+
+    db.get(
+        `SELECT u.id FROM users u
+         JOIN roles r ON r.id = u.role_id
+         WHERE u.id = ? AND r.name = 'admin'`,
+        [adminId],
+        (err, adminRow) => {
+            if (err) {
+                return res.status(500).json({ error: err.message });
+            }
+
+            if (!adminRow) {
+                return res.status(403).json({ error: "Доступ запрещен" });
+            }
+
+            onSuccess();
+        }
+    );
+}
+
 db.serialize(() => {
+    db.run(`CREATE TABLE IF NOT EXISTS roles (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE
+    )`);
+
+    seedRoles();
+
+    db.run(`CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fio TEXT NOT NULL,
+        email TEXT NOT NULL UNIQUE,
+        phone TEXT,
+        password TEXT,
+        company_name TEXT,
+        role_id INTEGER,
+        FOREIGN KEY(role_id) REFERENCES roles(id)
+    )`);
+
+    addColumnIfMissing("users", "password", "TEXT");
+    addColumnIfMissing("users", "company_name", "TEXT");
+
+    // Создание таблицы products (если еще не создана)
     db.run(`CREATE TABLE IF NOT EXISTS products (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         article TEXT UNIQUE,
@@ -33,6 +144,21 @@ db.serialize(() => {
         image_url TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`);
+
+    // Создание таблицы cart_items (если ещё не создана)
+    db.run(`CREATE TABLE IF NOT EXISTS cart_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        product_id INTEGER NOT NULL,
+        quantity INTEGER NOT NULL DEFAULT 1,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(user_id) REFERENCES users(id),
+        FOREIGN KEY(product_id) REFERENCES products(id),
+        UNIQUE(user_id, product_id)
+    )`);
+
+    ensureAdminUser();
 });
 
 // Получить все товары
@@ -76,16 +202,31 @@ app.post("/products", (req, res) => {
 
 // Остальные маршруты для users...
 app.get("/users", (req, res) => {
-    db.all("SELECT * FROM users", [], (err, rows) => {
+    db.all(
+        `SELECT u.id, u.fio, u.email, u.phone, u.company_name, u.role_id, r.name AS role_name
+         FROM users u
+         LEFT JOIN roles r ON r.id = u.role_id
+         ORDER BY u.id`,
+        [],
+        (err, rows) => {
         if (err) return res.status(500).json({ error: err.message });
-        res.json(rows);
+        const users = rows.map((row) => ({
+            id: row.id,
+            fio: row.fio,
+            email: row.email,
+            phone: row.phone,
+            company_name: row.company_name,
+            role_id: row.role_id,
+            role: row.role_name
+        }));
+        res.json(users);
     });
 });
 
 app.post("/users", (req, res) => {
-    const { fio, email, phone, role_id } = req.body;
-    db.run("INSERT INTO users (fio, email, phone, role_id) VALUES (?, ?, ?, ?)",
-        [fio, email, phone, role_id],
+    const { fio, email, phone, role_id, company_name } = req.body;
+    db.run("INSERT INTO users (fio, email, phone, role_id, company_name) VALUES (?, ?, ?, ?, ?)",
+        [fio, email, phone, role_id, company_name || null],
         function(err) {
             if (err) return res.status(500).json({ error: err.message });
             res.json({ id: this.lastID });
@@ -137,8 +278,8 @@ app.post("/auth/register", (req, res) => {
                     return res.status(500).json({ error: "Ошибка при хешировании пароля" });
                 }
                 
-                db.run("INSERT INTO users (fio, email, phone, password, role_id) VALUES (?, ?, ?, ?, ?)",
-                    [fio, email, phone || null, hashedPassword, roleId],
+                db.run("INSERT INTO users (fio, email, phone, password, role_id, company_name) VALUES (?, ?, ?, ?, ?, ?)",
+                    [fio, email, phone || null, hashedPassword, roleId, null],
                     function(err) {
                         if (err) {
                             return res.status(500).json({ error: err.message });
@@ -165,7 +306,11 @@ app.post("/auth/login", (req, res) => {
     }
     
     // Ищем пользователя по email
-    db.get("SELECT id, fio, email, phone, password, role_id FROM users WHERE email = ?", 
+    db.get(
+        `SELECT u.id, u.fio, u.email, u.phone, u.password, u.role_id, u.company_name, r.name AS role_name
+         FROM users u
+         LEFT JOIN roles r ON r.id = u.role_id
+         WHERE u.email = ?`,
         [email], 
         (err, user) => {
             if (err) {
@@ -180,11 +325,19 @@ app.post("/auth/login", (req, res) => {
             const isHashed = typeof storedPassword === "string" && storedPassword.startsWith("$2");
 
             const respondWithUser = () => {
-                const { password: _, ...userWithoutPassword } = user;
+                const userPayload = {
+                    id: user.id,
+                    fio: user.fio,
+                    email: user.email,
+                    phone: user.phone,
+                    role_id: user.role_id,
+                    company_name: user.company_name,
+                    role: user.role_name || "customer"
+                };
                 res.json({
                     success: true,
                     message: "Авторизация успешна",
-                    user: userWithoutPassword
+                    user: userPayload
                 });
             };
 
@@ -229,19 +382,108 @@ app.post("/auth/login", (req, res) => {
     );
 });
 
-// Создание таблицы cart_items, если её еще нет
-db.serialize(() => {
-    db.run(`CREATE TABLE IF NOT EXISTS cart_items (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        product_id INTEGER NOT NULL,
-        quantity INTEGER NOT NULL DEFAULT 1,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY(user_id) REFERENCES users(id),
-        FOREIGN KEY(product_id) REFERENCES products(id),
-        UNIQUE(user_id, product_id)
-    )`);
+// Админ: получить список пользователей
+app.get("/admin/users", (req, res) => {
+    const adminId = Number(req.query.adminId);
+
+    requireAdmin(adminId, res, () => {
+        db.all(
+            `SELECT u.id, u.fio, u.email, u.phone, u.company_name, u.role_id, r.name AS role_name
+             FROM users u
+             LEFT JOIN roles r ON r.id = u.role_id
+             ORDER BY u.id`,
+            [],
+            (err, rows) => {
+                if (err) {
+                    return res.status(500).json({ error: err.message });
+                }
+
+                const users = rows.map((row) => ({
+                    id: row.id,
+                    fio: row.fio,
+                    email: row.email,
+                    phone: row.phone,
+                    company_name: row.company_name,
+                    role_id: row.role_id,
+                    role: row.role_name || "customer"
+                }));
+
+                res.json(users);
+            }
+        );
+    });
+});
+
+// Админ: переключить статус поставщика
+app.put("/admin/users/:userId/supplier", (req, res) => {
+    const adminId = Number(req.body.adminId);
+    const userId = Number(req.params.userId);
+    const { isSupplier, companyName } = req.body;
+
+    if (!userId) {
+        return res.status(400).json({ error: "userId обязателен" });
+    }
+
+    const supplierFlag = isSupplier === true || isSupplier === "true" || isSupplier === 1 || isSupplier === "1";
+
+    requireAdmin(adminId, res, () => {
+        db.get(
+            `SELECT u.id, r.name AS role_name
+             FROM users u
+             LEFT JOIN roles r ON r.id = u.role_id
+             WHERE u.id = ?`,
+            [userId],
+            (err, targetUser) => {
+                if (err) {
+                    return res.status(500).json({ error: err.message });
+                }
+
+                if (!targetUser) {
+                    return res.status(404).json({ error: "Пользователь не найден" });
+                }
+
+                if (targetUser.role_name === "admin") {
+                    return res.status(400).json({ error: "Нельзя изменять статус администратора" });
+                }
+
+                if (adminId === userId) {
+                    return res.status(400).json({ error: "Нельзя изменить собственный статус" });
+                }
+
+                const targetRoleName = supplierFlag ? "supplier" : "customer";
+                getRoleId(targetRoleName, (roleErr, targetRoleId) => {
+                    if (roleErr || !targetRoleId) {
+                        return res.status(500).json({ error: "Не удалось получить роль" });
+                    }
+
+                    const normalizedCompany = supplierFlag
+                        ? (companyName && companyName.toString().trim()) || DEFAULT_COMPANY_NAME
+                        : null;
+
+                    db.run(
+                        `UPDATE users SET role_id = ?, company_name = ? WHERE id = ?`,
+                        [targetRoleId, normalizedCompany, userId],
+                        function(updateErr) {
+                            if (updateErr) {
+                                return res.status(500).json({ error: updateErr.message });
+                            }
+
+                            if (this.changes === 0) {
+                                return res.status(400).json({ error: "Изменения не были применены" });
+                            }
+
+                            res.json({
+                                success: true,
+                                userId,
+                                isSupplier: supplierFlag,
+                                companyName: normalizedCompany || undefined
+                            });
+                        }
+                    );
+                });
+            }
+        );
+    });
 });
 
 // Получить корзину пользователя

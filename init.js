@@ -1,17 +1,25 @@
 const sqlite3 = require("sqlite3").verbose();
 const db = new sqlite3.Database("./database.db");
 
+const DEFAULT_ROLES = ["customer", "supplier", "admin"];
+
 db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS roles (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL UNIQUE
     )`);
 
+    DEFAULT_ROLES.forEach((role) => {
+        db.run(`INSERT OR IGNORE INTO roles (name) VALUES (?)`, [role]);
+    });
+
     db.run(`CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         fio TEXT NOT NULL,
         email TEXT NOT NULL UNIQUE,
         phone TEXT,
+        password TEXT,
+        company_name TEXT DEFAULT NULL,
         role_id INTEGER,
         FOREIGN KEY(role_id) REFERENCES roles(id)
     )`);

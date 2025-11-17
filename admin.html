@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Админ-панель - SwiftBuy</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="main-nav">
+    <div class="nav-brand">
+        <h1><a href="index.html" style="color: inherit; text-decoration: none;">SwiftBuy</a></h1>
+    </div>
+    <div class="nav-links">
+        <a href="index.html">Главная</a>
+        <a href="#" onclick="goToCart(event); return false;">Корзина</a>
+        <a href="#" onclick="goToRequests(event); return false;">Заявки</a>
+        <a href="about.html">О нас</a>
+        <div class="nav-search">
+            <div class="search-wrapper">
+                <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <path d="m21 21-4.35-4.35"></path>
+                </svg>
+                <input type="text" name="Search" class="search-input" placeholder="Поиск товаров..." autocomplete="off">
+                <button class="search-clear" id="search-clear" style="display: none;">×</button>
+            </div>
+        </div>
+        <div class="user-menu-container">
+            <button class="user-icon-btn" id="user-icon-btn" onclick="toggleUserMenu()">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="12" cy="7" r="4"></circle>
+                </svg>
+            </button>
+            <div class="user-dropdown" id="user-dropdown">
+                <div id="user-menu-content"></div>
+            </div>
+        </div>
+    </div>
+</nav>
+
+<div class="profile-container">
+    <div class="profile-content">
+        <div class="profile-section" id="admin-panel">
+            <h1 class="section-title">Админ-панель</h1>
+            <p class="section-description">Управляйте ролями пользователей и назначайте поставщиков</p>
+            <div id="admin-users-list" class="admin-users-list">
+                <div class="loading">Загрузка данных...</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<footer>
+    <div class="footer-content">
+        <div class="footer-description">
+            <p>SwiftBuy — это удобный сервис заказа техники у проверенных поставщиков. Управляйте ассортиментом, заявками и клиентами в одном месте.</p>
+        </div>
+        <p class="footer-copyright">&copy; 2025 SwiftBuy. Все права защищены.</p>
+    </div>
+</footer>
+
+<script>
+const DEFAULT_COMPANY_NAME = 'LocalStore';
+const ROLE_TITLES = {
+    admin: 'Администратор',
+    supplier: 'Поставщик',
+    customer: 'Покупатель',
+    manager: 'Менеджер'
+};
+
+function getStoredUser() {
+    try {
+        return JSON.parse(localStorage.getItem('user') || 'null');
+    } catch (error) {
+        return null;
+    }
+}
+
+function getUserRole(user) {
+    if (!user) return 'customer';
+    return user.role || user.role_name || 'customer';
+}
+
+function getRoleTitle(role) {
+    return ROLE_TITLES[role] || 'Пользователь';
+}
+
+function escapeHtml(value) {
+    if (value === null || value === undefined) {
+        return '';
+    }
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
+    const user = getStoredUser();
+
+    if (!isAuthenticated || !user) {
+        alert('Для доступа к админ-панели необходимо войти в систему');
+        window.location.href = 'login.html';
+        return;
+    }
+
+    if (getUserRole(user) !== 'admin') {
+        alert('Доступ к админ-панели запрещен');
+        window.location.href = 'index.html';
+        return;
+    }
+
+    updateAuthNav();
+    loadAdminUsers();
+});
+
+async function loadAdminUsers() {
+    const adminUser = getStoredUser();
+    const container = document.getElementById('admin-users-list');
+
+    if (!container || !adminUser) {
+        return;
+    }
+
+    container.innerHTML = '<div class="loading">Загрузка пользователей...</div>';
+
+    try {
+        const response = await fetch(`http://localhost:3000/admin/users?adminId=${adminUser.id}`);
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || 'Ошибка загрузки пользователей');
+        }
+
+        renderAdminUsers(Array.isArray(data) ? data : []);
+    } catch (error) {
+        container.innerHTML = `<div class="error-message" style="display: block;">${error.message || 'Не удалось загрузить пользователей'}</div>`;
+    }
+}
+
+function renderAdminUsers(users) {
+    const container = document.getElementById('admin-users-list');
+    if (!container) {
+        return;
+    }
+
+    if (!users.length) {
+        container.innerHTML = '<div class="muted-text">Пользователи не найдены</div>';
+        return;
+    }
+
+    const rows = users.map((user) => {
+        const role = getUserRole(user);
+        const supplier = role === 'supplier';
+        const adminLocked = role === 'admin';
+        const companyValue = supplier ? (user.company_name || DEFAULT_COMPANY_NAME) : '';
+
+        const checkboxCell = adminLocked
+            ? '<span class="badge muted">—</span>'
+            : `
+                <label class="supplier-toggle">
+                    <input type="checkbox" class="supplier-checkbox" ${supplier ? 'checked' : ''} onchange="handleSupplierToggle(event, ${user.id})">
+                    <span>Поставщик</span>
+                </label>
+            `;
+
+        const companyCell = adminLocked
+            ? '<span class="muted-text">Недоступно</span>'
+            : `<input type="text" class="company-input" value="${escapeHtml(companyValue)}" placeholder="Название компании" ${supplier ? '' : 'disabled'}>`;
+
+        return `
+            <tr data-user-row="${user.id}">
+                <td>
+                    <div class="table-name">${escapeHtml(user.fio || 'Без имени')}</div>
+                    <div class="table-email">${escapeHtml(user.email)}</div>
+                </td>
+                <td>
+                    <span class="role-badge role-${role}">${getRoleTitle(role)}</span>
+                </td>
+                <td>${checkboxCell}</td>
+                <td>${companyCell}</td>
+            </tr>
+        `;
+    }).join('');
+
+    container.innerHTML = `
+        <div class="admin-users-table-wrapper">
+            <table class="admin-users-table">
+                <thead>
+                    <tr>
+                        <th>Пользователь</th>
+                        <th>Роль</th>
+                        <th>Статус поставщика</th>
+                        <th>Компания</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        </div>
+    `;
+}
+
+function handleSupplierToggle(event, targetUserId) {
+    const checkbox = event.target;
+    const row = checkbox.closest('tr');
+    const companyInput = row ? row.querySelector('.company-input') : null;
+    const isChecked = checkbox.checked;
+
+    if (companyInput) {
+        companyInput.disabled = !isChecked;
+        if (isChecked && !companyInput.value.trim()) {
+            companyInput.value = DEFAULT_COMPANY_NAME;
+        }
+    }
+
+    const companyName = companyInput ? companyInput.value.trim() : DEFAULT_COMPANY_NAME;
+    updateSupplierStatus(targetUserId, isChecked, companyName || DEFAULT_COMPANY_NAME);
+}
+
+async function updateSupplierStatus(targetUserId, isSupplierStatus, companyName) {
+    const adminUser = getStoredUser();
+    if (!adminUser) {
+        return;
+    }
+
+    const payload = {
+        adminId: adminUser.id,
+        isSupplier: isSupplierStatus,
+        companyName: companyName || DEFAULT_COMPANY_NAME
+    };
+
+    try {
+        const response = await fetch(`http://localhost:3000/admin/users/${targetUserId}/supplier`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || 'Не удалось обновить статус');
+        }
+
+        showCartToast(isSupplierStatus ? 'Пользователь назначен поставщиком' : 'Пользователь переведен в покупатели');
+        loadAdminUsers();
+    } catch (error) {
+        showCartToast(error.message || 'Ошибка при обновлении статуса');
+        loadAdminUsers();
+    }
+}
+
+function updateAuthNav() {
+    const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
+    const user = getStoredUser();
+    const userMenuContent = document.getElementById('user-menu-content');
+    
+    if (!userMenuContent) return;
+
+    if (isAuthenticated && user) {
+        const role = getUserRole(user);
+        const isSupplier = role === 'supplier';
+        const isAdmin = role === 'admin';
+        const companyBlock = isSupplier ? `<div class="user-company">${user.company_name || DEFAULT_COMPANY_NAME}</div>` : '';
+        const adminLink = isAdmin ? '<a href="admin.html" class="dropdown-item">Админ-панель</a>' : '';
+
+        userMenuContent.innerHTML = `
+            <div class="user-info">
+                <div class="user-name">${user.fio}</div>
+                <div class="user-email">${user.email}</div>
+                ${companyBlock}
+            </div>
+            <div class="dropdown-divider"></div>
+            <a href="profile.html" class="dropdown-item">Личный кабинет</a>
+            ${adminLink}
+            <a href="#" class="dropdown-item" onclick="logout(); return false;">Выйти</a>
+        `;
+    } else {
+        userMenuContent.innerHTML = `
+            <a href="login.html" class="dropdown-item">Войти</a>
+            <a href="register.html" class="dropdown-item">Регистрация</a>
+        `;
+    }
+}
+
+function logout() {
+    localStorage.removeItem('user');
+    localStorage.removeItem('isAuthenticated');
+    updateAuthNav();
+    window.location.href = 'index.html';
+}
+
+function toggleUserMenu() {
+    const dropdown = document.getElementById('user-dropdown');
+    if (dropdown) {
+        dropdown.classList.toggle('show');
+    }
+}
+
+document.addEventListener('click', function(event) {
+    const userMenuContainer = document.querySelector('.user-menu-container');
+    const dropdown = document.getElementById('user-dropdown');
+    
+    if (userMenuContainer && !userMenuContainer.contains(event.target)) {
+        if (dropdown) {
+            dropdown.classList.remove('show');
+        }
+    }
+});
+
+function goToCart(event) {
+    event.preventDefault();
+    window.location.href = 'cart.html';
+}
+
+function goToRequests(event) {
+    event.preventDefault();
+    const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
+    const user = getStoredUser();
+    
+    if (!isAuthenticated || !user) {
+        window.location.href = 'login.html';
+        return;
+    }
+    
+    showCartToast('Функция в разработке');
+}
+
+function showCartToast(message) {
+    let toastContainer = document.querySelector('.cart-toast-container');
+    if (!toastContainer) {
+        toastContainer = document.createElement('div');
+        toastContainer.className = 'cart-toast-container';
+        document.body.appendChild(toastContainer);
+    }
+
+    const toast = document.createElement('div');
+    toast.className = 'cart-toast';
+    toast.textContent = message;
+    toastContainer.appendChild(toast);
+
+    requestAnimationFrame(() => {
+        toast.classList.add('show');
+    });
+
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 300);
+    }, 2500);
+}
+</script>
+
+</body>
+</html>
+
