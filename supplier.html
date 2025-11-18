@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Управление товарами - SwiftBuy</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="main-nav">
+    <div class="nav-brand">
+        <h1><a href="index.html" style="color: inherit; text-decoration: none;">SwiftBuy</a></h1>
+    </div>
+    <div class="nav-links">
+        <a href="index.html">Главная</a>
+        <a href="#" onclick="goToCart(event); return false;">Корзина</a>
+        <a href="#" onclick="goToRequests(event); return false;">Заявки</a>
+        <a href="about.html">О нас</a>
+        <div class="nav-search">
+            <div class="search-wrapper">
+                <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <path d="m21 21-4.35-4.35"></path>
+                </svg>
+                <input type="text" name="Search" class="search-input" placeholder="Поиск товаров..." autocomplete="off">
+                <button class="search-clear" id="search-clear" style="display: none;">×</button>
+            </div>
+        </div>
+        <div class="user-menu-container">
+            <button class="user-icon-btn" id="user-icon-btn" onclick="toggleUserMenu()">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="12" cy="7" r="4"></circle>
+                </svg>
+            </button>
+            <div class="user-dropdown" id="user-dropdown">
+                <div id="user-menu-content"></div>
+            </div>
+        </div>
+    </div>
+</nav>
+
+<div class="profile-container">
+    <div class="profile-content">
+        <h1 class="profile-title">Управление товарами</h1>
+        
+        <!-- Форма создания товара -->
+        <div class="profile-section">
+            <h2 class="section-title">Добавить новый товар</h2>
+            <form id="createProductForm" class="profile-form">
+                <div class="form-group">
+                    <label for="productArticle">Артикул *</label>
+                    <input type="text" id="productArticle" name="article" required placeholder="ART-001">
+                </div>
+                
+                <div class="form-group">
+                    <label for="productName">Название товара *</label>
+                    <input type="text" id="productName" name="name" required placeholder="Название товара">
+                </div>
+                
+                <div class="form-group">
+                    <label for="productDescription">Описание</label>
+                    <textarea id="productDescription" name="description" rows="3" placeholder="Описание товара"></textarea>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="productPrice">Цена (руб.) *</label>
+                        <input type="number" id="productPrice" name="price" required min="0" step="0.01" placeholder="0.00">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="productQuantity">Количество *</label>
+                        <input type="number" id="productQuantity" name="quantity" required min="0" placeholder="0">
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="productCategory">Категория</label>
+                        <input type="text" id="productCategory" name="category" placeholder="Электроника">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="productImage">URL изображения</label>
+                        <input type="url" id="productImage" name="image_url" placeholder="https://example.com/image.jpg">
+                    </div>
+                </div>
+                
+                <div id="product-error-message" class="error-message" style="display: none;"></div>
+                <div id="product-success-message" class="success-message" style="display: none;"></div>
+                
+                <button type="submit" class="auth-button">Создать товар</button>
+            </form>
+        </div>
+
+        <!-- Список товаров -->
+        <div class="profile-section">
+            <h2 class="section-title">Мои товары</h2>
+            <div id="products-list" class="admin-users-list">
+                <div class="loading">Загрузка товаров...</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<footer>
+    <div class="footer-content">
+        <div class="footer-description">
+            <p>SwiftBuy — это удобный сервис заказа техники у проверенных поставщиков. Управляйте ассортиментом, заявками и клиентами в одном месте.</p>
+        </div>
+        <p class="footer-copyright">&copy; 2025 SwiftBuy. Все права защищены.</p>
+    </div>
+</footer>
+
+<script>
+const PLACEHOLDER_IMAGE = 'https://via.placeholder.com/600x600?text=SwiftBuy';
+
+function getStoredUser() {
+    try {
+        return JSON.parse(localStorage.getItem('user') || 'null');
+    } catch (error) {
+        return null;
+    }
+}
+
+function getUserRole(user) {
+    if (!user) return 'customer';
+    return user.role || user.role_name || 'customer';
+}
+
+function escapeHtml(value) {
+    if (value === null || value === undefined) {
+        return '';
+    }
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
+    const user = getStoredUser();
+    
+    if (!isAuthenticated || !user) {
+        alert('Для доступа к управлению товарами необходимо войти в систему');
+        window.location.href = 'login.html';
+        return;
+    }
+    
+    if (getUserRole(user) !== 'supplier') {
+        alert('Доступ к управлению товарами разрешен только поставщикам');
+        window.location.href = 'index.html';
+        return;
+    }
+    
+    updateAuthNav();
+    loadProducts();
+});
+
+async function loadProducts() {
+    const supplierUser = getStoredUser();
+    const container = document.getElementById('products-list');
+    
+    if (!container || !supplierUser) {
+        return;
+    }
+    
+    container.innerHTML = '<div class="loading">Загрузка товаров...</div>';
+    
+    try {
+        const response = await fetch(`http://localhost:3000/supplier/products?supplierId=${supplierUser.id}`);
+        const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data.error || 'Ошибка загрузки товаров');
+        }
+        
+        renderProducts(Array.isArray(data) ? data : []);
+    } catch (error) {
+        container.innerHTML = `<div class="error-message" style="display: block;">${error.message || 'Не удалось загрузить товары'}</div>`;
+    }
+}
+
+function renderProducts(products) {
+    const container = document.getElementById('products-list');
+    if (!container) {
+        return;
+    }
+    
+    if (!products.length) {
+        container.innerHTML = '<div class="muted-text">У вас пока нет товаров. Создайте первый товар с помощью формы выше.</div>';
+        return;
+    }
+    
+    const rows = products.map((product) => {
+        return `
+            <tr data-product-row="${product.id}">
+                <td>
+                    <div class="table-name">${escapeHtml(product.name || 'Без названия')}</div>
+                    <div class="table-email">Арт: ${escapeHtml(product.article || '—')}</div>
+                </td>
+                <td>${escapeHtml(product.category || '—')}</td>
+                <td>${escapeHtml(product.description || '—')}</td>
+                <td>${Number(product.price || 0).toFixed(2)} руб.</td>
+                <td>${Number(product.quantity || 0)}</td>
+                <td>
+                    <a href="edit-product.html?id=${product.id}" class="link-btn" style="margin-right: 8px;">Редактировать</a>
+                    <button class="link-btn delete-btn" onclick="deleteProduct(${product.id})">Удалить</button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+    
+    container.innerHTML = `
+        <div class="admin-users-table-wrapper">
+            <table class="admin-users-table">
+                <thead>
+                    <tr>
+                        <th>Товар</th>
+                        <th>Категория</th>
+                        <th>Описание</th>
+                        <th>Цена</th>
+                        <th>Количество</th>
+                        <th>Действия</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        </div>
+    `;
+}
+
+async function deleteProduct(productId) {
+    if (!confirm('Вы уверены, что хотите удалить этот товар?')) {
+        return;
+    }
+    
+    const supplierUser = getStoredUser();
+    if (!supplierUser) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`http://localhost:3000/supplier/products/${productId}?supplierId=${supplierUser.id}`, {
+            method: 'DELETE'
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data.error || 'Не удалось удалить товар');
+        }
+        
+        showCartToast('Товар успешно удален');
+        loadProducts();
+    } catch (error) {
+        showCartToast(error.message || 'Ошибка при удалении товара');
+    }
+}
+
+// Обработка создания товара
+document.getElementById('createProductForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const supplierUser = getStoredUser();
+    if (!supplierUser) {
+        alert('Ошибка: пользователь не найден');
+        return;
+    }
+    
+    const article = document.getElementById('productArticle').value.trim();
+    const name = document.getElementById('productName').value.trim();
+    const description = document.getElementById('productDescription').value.trim();
+    const price = parseFloat(document.getElementById('productPrice').value);
+    const quantity = parseInt(document.getElementById('productQuantity').value);
+    const category = document.getElementById('productCategory').value.trim();
+    const image_url = document.getElementById('productImage').value.trim();
+    
+    const errorMessage = document.getElementById('product-error-message');
+    const successMessage = document.getElementById('product-success-message');
+    
+    errorMessage.style.display = 'none';
+    successMessage.style.display = 'none';
+    
+    if (!article || !name || !price || quantity === undefined) {
+        errorMessage.textContent = 'Заполните все обязательные поля';
+        errorMessage.style.display = 'block';
+        return;
+    }
+    
+    if (price < 0) {
+        errorMessage.textContent = 'Цена не может быть отрицательной';
+        errorMessage.style.display = 'block';
+        return;
+    }
+    
+    if (quantity < 0) {
+        errorMessage.textContent = 'Количество не может быть отрицательным';
+        errorMessage.style.display = 'block';
+        return;
+    }
+    
+    try {
+        const response = await fetch('http://localhost:3000/supplier/products', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                supplierId: supplierUser.id,
+                article,
+                name,
+                description: description || null,
+                price,
+                quantity,
+                category: category || null,
+                image_url: image_url || null
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data.error || 'Ошибка при создании товара');
+        }
+        
+        // Очищаем форму
+        document.getElementById('createProductForm').reset();
+        
+        successMessage.textContent = data.message || 'Товар успешно создан!';
+        successMessage.style.display = 'block';
+        
+        // Обновляем список товаров
+        loadProducts();
+        
+        // Скрываем сообщение через 3 секунды
+        setTimeout(() => {
+            successMessage.style.display = 'none';
+        }, 3000);
+    } catch (error) {
+        errorMessage.textContent = error.message || 'Ошибка при создании товара';
+        errorMessage.style.display = 'block';
+    }
+});
+
+function updateAuthNav() {
+    const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
+    const user = getStoredUser();
+    const userMenuContent = document.getElementById('user-menu-content');
+    
+    if (!userMenuContent) return;
+    
+    if (isAuthenticated && user) {
+        const role = getUserRole(user);
+        const isSupplier = role === 'supplier';
+        const isAdmin = role === 'admin';
+        const companyBlock = isSupplier ? `<div class="user-company">${user.company_name || 'LocalStore'}</div>` : '';
+        const adminLink = isAdmin ? '<a href="admin.html" class="dropdown-item">Админ-панель</a>' : '';
+        const supplierLink = isSupplier ? '<a href="supplier.html" class="dropdown-item">Мои товары</a>' : '';
+        
+        userMenuContent.innerHTML = `
+            <div class="user-info">
+                <div class="user-name">${user.fio}</div>
+                <div class="user-email">${user.email}</div>
+                ${companyBlock}
+            </div>
+            <div class="dropdown-divider"></div>
+            <a href="profile.html" class="dropdown-item">Личный кабинет</a>
+            ${adminLink}
+            ${supplierLink}
+            <a href="#" class="dropdown-item" onclick="logout(); return false;">Выйти</a>
+        `;
+    } else {
+        userMenuContent.innerHTML = `
+            <a href="login.html" class="dropdown-item">Войти</a>
+            <a href="register.html" class="dropdown-item">Регистрация</a>
+        `;
+    }
+}
+
+function logout() {
+    localStorage.removeItem('user');
+    localStorage.removeItem('isAuthenticated');
+    updateAuthNav();
+    window.location.href = 'index.html';
+}
+
+function toggleUserMenu() {
+    const dropdown = document.getElementById('user-dropdown');
+    if (dropdown) {
+        dropdown.classList.toggle('show');
+    }
+}
+
+document.addEventListener('click', function(event) {
+    const userMenuContainer = document.querySelector('.user-menu-container');
+    const dropdown = document.getElementById('user-dropdown');
+    
+    if (userMenuContainer && !userMenuContainer.contains(event.target)) {
+        if (dropdown) {
+            dropdown.classList.remove('show');
+        }
+    }
+});
+
+function goToCart(event) {
+    event.preventDefault();
+    window.location.href = 'cart.html';
+}
+
+function goToRequests(event) {
+    event.preventDefault();
+    const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
+    const user = getStoredUser();
+    
+    if (!isAuthenticated || !user) {
+        window.location.href = 'login.html';
+        return;
+    }
+    
+    showCartToast('Функция в разработке');
+}
+
+function showCartToast(message) {
+    let toastContainer = document.querySelector('.cart-toast-container');
+    if (!toastContainer) {
+        toastContainer = document.createElement('div');
+        toastContainer.className = 'cart-toast-container';
+        document.body.appendChild(toastContainer);
+    }
+    
+    const toast = document.createElement('div');
+    toast.className = 'cart-toast';
+    toast.textContent = message;
+    toastContainer.appendChild(toast);
+    
+    requestAnimationFrame(() => {
+        toast.classList.add('show');
+    });
+    
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 300);
+    }, 2500);
+}
+</script>
+
+</body>
+</html>
+

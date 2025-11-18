@@ -172,7 +172,7 @@ function renderAdminUsers(users) {
 
         const companyCell = adminLocked
             ? '<span class="muted-text">Недоступно</span>'
-            : `<input type="text" class="company-input" value="${escapeHtml(companyValue)}" placeholder="Название компании" ${supplier ? '' : 'disabled'}>`;
+            : `<input type="text" class="company-input" value="${escapeHtml(companyValue)}" placeholder="Название компании" ${supplier ? '' : 'disabled'} onblur="handleCompanyNameChange(event, ${user.id})" onkeypress="if(event.key==='Enter') event.target.blur()">`;
 
         return `
             <tr data-user-row="${user.id}">
@@ -254,6 +254,55 @@ async function updateSupplierStatus(targetUserId, isSupplierStatus, companyName)
         loadAdminUsers();
     } catch (error) {
         showCartToast(error.message || 'Ошибка при обновлении статуса');
+        loadAdminUsers();
+    }
+}
+
+async function handleCompanyNameChange(event, targetUserId) {
+    const input = event.target;
+    const companyName = input.value.trim();
+    const adminUser = getStoredUser();
+    
+    if (!adminUser) {
+        return;
+    }
+
+    // Проверяем, является ли пользователь поставщиком
+    const row = input.closest('tr');
+    const roleBadge = row ? row.querySelector('.role-badge') : null;
+    const isSupplier = roleBadge && roleBadge.classList.contains('role-supplier');
+
+    if (!isSupplier) {
+        // Если не поставщик, не сохраняем
+        return;
+    }
+
+    const normalizedCompany = companyName || DEFAULT_COMPANY_NAME;
+
+    try {
+        const response = await fetch(`http://localhost:3000/admin/users/${targetUserId}/company`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                adminId: adminUser.id,
+                companyName: normalizedCompany
+            })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || 'Не удалось обновить название компании');
+        }
+
+        // Обновляем значение в поле, чтобы оно соответствовало сохраненному
+        input.value = normalizedCompany;
+        showCartToast('Название компании обновлено');
+    } catch (error) {
+        showCartToast(error.message || 'Ошибка при обновлении названия компании');
+        // Восстанавливаем предыдущее значение из БД
         loadAdminUsers();
     }
 }
@@ -360,4 +409,5 @@ function showCartToast(message) {
 
 </body>
 </html>
+
 

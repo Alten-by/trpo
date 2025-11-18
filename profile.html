@@ -408,6 +408,9 @@ function updateAuthNav() {
             const adminLink = role === 'admin'
                 ? `<a href="admin.html" class="dropdown-item">Админ-панель</a>`
                 : '';
+            const supplierLink = role === 'supplier'
+                ? `<a href="supplier.html" class="dropdown-item">Мои товары</a>`
+                : '';
 
             userMenuContent.innerHTML = `
                 <div class="user-info">
@@ -418,6 +421,7 @@ function updateAuthNav() {
                 <div class="dropdown-divider"></div>
                 <a href="profile.html" class="dropdown-item">Личный кабинет</a>
                 ${adminLink}
+                ${supplierLink}
                 <a href="#" class="dropdown-item" onclick="logout(); return false;">Выйти</a>
             `;
         } else {

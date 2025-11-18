@@ -80,6 +80,7 @@ function updateAuthNav() {
             const isAdmin = role === 'admin';
             const companyBlock = isSupplier ? `<div class="user-company">${user.company_name || 'LocalStore'}</div>` : '';
             const adminLink = isAdmin ? '<a href="admin.html" class="dropdown-item">Админ-панель</a>' : '';
+            const supplierLink = isSupplier ? '<a href="supplier.html" class="dropdown-item">Мои товары</a>' : '';
 
             userMenuContent.innerHTML = `
                 <div class="user-info">
@@ -90,6 +91,7 @@ function updateAuthNav() {
                 <div class="dropdown-divider"></div>
                 <a href="profile.html" class="dropdown-item">Личный кабинет</a>
                 ${adminLink}
+                ${supplierLink}
                 <a href="#" class="dropdown-item" onclick="logout(); return false;">Выйти</a>
             `;
         } else {

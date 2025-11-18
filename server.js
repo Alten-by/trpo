@@ -109,6 +109,30 @@ function requireAdmin(adminId, res, onSuccess) {
     );
 }
 
+function requireSupplier(supplierId, res, onSuccess) {
+    if (!supplierId) {
+        return res.status(400).json({ error: "supplierId обязателен" });
+    }
+
+    db.get(
+        `SELECT u.id, u.company_name FROM users u
+         JOIN roles r ON r.id = u.role_id
+         WHERE u.id = ? AND r.name = 'supplier'`,
+        [supplierId],
+        (err, supplierRow) => {
+            if (err) {
+                return res.status(500).json({ error: err.message });
+            }
+
+            if (!supplierRow) {
+                return res.status(403).json({ error: "Доступ запрещен. Требуется роль поставщика" });
+            }
+
+            onSuccess(supplierRow);
+        }
+    );
+}
+
 db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS roles (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -130,6 +154,7 @@ db.serialize(() => {
 
     addColumnIfMissing("users", "password", "TEXT");
     addColumnIfMissing("users", "company_name", "TEXT");
+    addColumnIfMissing("products", "created_at", "DATETIME");
 
     // Создание таблицы products (если еще не создана)
     db.run(`CREATE TABLE IF NOT EXISTS products (
@@ -198,6 +223,190 @@ app.post("/products", (req, res) => {
             res.json({ id: this.lastID });
         }
     );
+});
+
+// Поставщик: получить свои товары
+app.get("/supplier/products", (req, res) => {
+    const supplierId = Number(req.query.supplierId);
+
+    requireSupplier(supplierId, res, (supplier) => {
+        db.all(
+            "SELECT * FROM products WHERE supplier = ? ORDER BY COALESCE(created_at, '1970-01-01') DESC, id DESC",
+            [supplier.company_name],
+            (err, rows) => {
+                if (err) {
+                    return res.status(500).json({ error: err.message });
+                }
+                res.json(rows);
+            }
+        );
+    });
+});
+
+// Поставщик: создать товар
+app.post("/supplier/products", (req, res) => {
+    const supplierId = Number(req.body.supplierId);
+    const { article, name, description, price, quantity, category, image_url } = req.body;
+
+    if (!article || !name || !price || quantity === undefined) {
+        return res.status(400).json({ error: "Артикул, название, цена и количество обязательны" });
+    }
+
+    requireSupplier(supplierId, res, (supplier) => {
+        db.run(
+            "INSERT INTO products (article, name, description, price, quantity, supplier, category, image_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            [article, name, description, price, quantity, supplier.company_name, category || null, image_url || null],
+            function(err) {
+                if (err) {
+                    if (err.message.includes("UNIQUE constraint")) {
+                        return res.status(400).json({ error: "Товар с таким артикулом уже существует" });
+                    }
+                    return res.status(500).json({ error: err.message });
+                }
+                res.json({ 
+                    success: true, 
+                    id: this.lastID,
+                    message: "Товар успешно создан"
+                });
+            }
+        );
+    });
+});
+
+// Поставщик: получить один свой товар
+app.get("/supplier/products/:productId", (req, res) => {
+    const supplierId = Number(req.query.supplierId);
+    const productId = Number(req.params.productId);
+
+    console.log(`GET /supplier/products/${productId}?supplierId=${supplierId}`);
+
+    if (!supplierId || isNaN(supplierId)) {
+        return res.status(400).json({ error: "supplierId обязателен и должен быть числом" });
+    }
+
+    if (!productId || isNaN(productId)) {
+        return res.status(400).json({ error: "productId обязателен и должен быть числом" });
+    }
+
+    requireSupplier(supplierId, res, (supplier) => {
+        db.get(
+            "SELECT * FROM products WHERE id = ? AND supplier = ?",
+            [productId, supplier.company_name],
+            (err, product) => {
+                if (err) {
+                    console.error('Ошибка БД:', err);
+                    return res.status(500).json({ error: err.message });
+                }
+
+                if (!product) {
+                    return res.status(404).json({ error: "Товар не найден или не принадлежит вам" });
+                }
+
+                res.json(product);
+            }
+        );
+    });
+});
+
+// Поставщик: обновить свой товар
+app.put("/supplier/products/:productId", (req, res) => {
+    const supplierId = Number(req.body.supplierId);
+    const productId = Number(req.params.productId);
+    const { article, name, description, price, quantity, category, image_url } = req.body;
+
+    if (!productId) {
+        return res.status(400).json({ error: "productId обязателен" });
+    }
+
+    if (!article || !name || !price || quantity === undefined) {
+        return res.status(400).json({ error: "Артикул, название, цена и количество обязательны" });
+    }
+
+    requireSupplier(supplierId, res, (supplier) => {
+        // Проверяем, что товар принадлежит этому поставщику
+        db.get(
+            "SELECT id FROM products WHERE id = ? AND supplier = ?",
+            [productId, supplier.company_name],
+            (err, product) => {
+                if (err) {
+                    return res.status(500).json({ error: err.message });
+                }
+
+                if (!product) {
+                    return res.status(404).json({ error: "Товар не найден или не принадлежит вам" });
+                }
+
+                // Проверяем, не занят ли новый артикул другим товаром
+                db.get(
+                    "SELECT id FROM products WHERE article = ? AND id != ?",
+                    [article, productId],
+                    (err2, existingProduct) => {
+                        if (err2) {
+                            return res.status(500).json({ error: err2.message });
+                        }
+
+                        if (existingProduct) {
+                            return res.status(400).json({ error: "Товар с таким артикулом уже существует" });
+                        }
+
+                        // Обновляем товар
+                        db.run(
+                            "UPDATE products SET article = ?, name = ?, description = ?, price = ?, quantity = ?, category = ?, image_url = ? WHERE id = ?",
+                            [article, name, description || null, price, quantity, category || null, image_url || null, productId],
+                            function(updateErr) {
+                                if (updateErr) {
+                                    return res.status(500).json({ error: updateErr.message });
+                                }
+
+                                res.json({
+                                    success: true,
+                                    message: "Товар успешно обновлен"
+                                });
+                            }
+                        );
+                    }
+                );
+            }
+        );
+    });
+});
+
+// Поставщик: удалить свой товар
+app.delete("/supplier/products/:productId", (req, res) => {
+    const supplierId = Number(req.query.supplierId);
+    const productId = Number(req.params.productId);
+
+    if (!productId) {
+        return res.status(400).json({ error: "productId обязателен" });
+    }
+
+    requireSupplier(supplierId, res, (supplier) => {
+        // Проверяем, что товар принадлежит этому поставщику
+        db.get(
+            "SELECT id FROM products WHERE id = ? AND supplier = ?",
+            [productId, supplier.company_name],
+            (err, product) => {
+                if (err) {
+                    return res.status(500).json({ error: err.message });
+                }
+
+                if (!product) {
+                    return res.status(404).json({ error: "Товар не найден или не принадлежит вам" });
+                }
+
+                db.run("DELETE FROM products WHERE id = ?", [productId], function(deleteErr) {
+                    if (deleteErr) {
+                        return res.status(500).json({ error: deleteErr.message });
+                    }
+
+                    res.json({
+                        success: true,
+                        message: "Товар успешно удален"
+                    });
+                });
+            }
+        );
+    });
 });
 
 // Остальные маршруты для users...
@@ -409,6 +618,64 @@ app.get("/admin/users", (req, res) => {
                 }));
 
                 res.json(users);
+            }
+        );
+    });
+});
+
+// Админ: обновить название компании поставщика
+app.put("/admin/users/:userId/company", (req, res) => {
+    const adminId = Number(req.body.adminId);
+    const userId = Number(req.params.userId);
+    const { companyName } = req.body;
+
+    if (!userId) {
+        return res.status(400).json({ error: "userId обязателен" });
+    }
+
+    requireAdmin(adminId, res, () => {
+        db.get(
+            `SELECT u.id, r.name AS role_name
+             FROM users u
+             LEFT JOIN roles r ON r.id = u.role_id
+             WHERE u.id = ?`,
+            [userId],
+            (err, targetUser) => {
+                if (err) {
+                    return res.status(500).json({ error: err.message });
+                }
+
+                if (!targetUser) {
+                    return res.status(404).json({ error: "Пользователь не найден" });
+                }
+
+                if (targetUser.role_name !== "supplier") {
+                    return res.status(400).json({ error: "Пользователь не является поставщиком" });
+                }
+
+                const normalizedCompany = companyName && companyName.toString().trim() 
+                    ? companyName.toString().trim() 
+                    : DEFAULT_COMPANY_NAME;
+
+                db.run(
+                    `UPDATE users SET company_name = ? WHERE id = ?`,
+                    [normalizedCompany, userId],
+                    function(updateErr) {
+                        if (updateErr) {
+                            return res.status(500).json({ error: updateErr.message });
+                        }
+
+                        if (this.changes === 0) {
+                            return res.status(400).json({ error: "Изменения не были применены" });
+                        }
+
+                        res.json({
+                            success: true,
+                            userId,
+                            companyName: normalizedCompany
+                        });
+                    }
+                );
             }
         );
     });
