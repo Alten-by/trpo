@@ -771,23 +771,53 @@ app.put("/admin/users/:userId/company", (req, res) => {
                     ? companyName.toString().trim() 
                     : DEFAULT_COMPANY_NAME;
 
-                db.run(
-                    `UPDATE users SET company_name = ? WHERE id = ?`,
-                    [normalizedCompany, userId],
-                    function(updateErr) {
-                        if (updateErr) {
-                            return res.status(500).json({ error: updateErr.message });
+                // Сначала получаем старое название компании
+                db.get(
+                    `SELECT company_name FROM users WHERE id = ?`,
+                    [userId],
+                    (err, oldUser) => {
+                        if (err) {
+                            return res.status(500).json({ error: err.message });
+                        }
+                        if (!oldUser) {
+                            return res.status(404).json({ error: "Пользователь не найден" });
                         }
 
-                        if (this.changes === 0) {
-                            return res.status(400).json({ error: "Изменения не были применены" });
-                        }
+                        const oldCompanyName = oldUser.company_name;
 
-                        res.json({
-                            success: true,
-                            userId,
-                            companyName: normalizedCompany
-                        });
+                        // Обновляем название компании в users
+                        db.run(
+                            `UPDATE users SET company_name = ? WHERE id = ?`,
+                            [normalizedCompany, userId],
+                            function(updateErr) {
+                                if (updateErr) {
+                                    return res.status(500).json({ error: updateErr.message });
+                                }
+
+                                if (this.changes === 0) {
+                                    return res.status(400).json({ error: "Изменения не были применены" });
+                                }
+
+                                // Обновляем supplier во всех товарах этого поставщика
+                                if (oldCompanyName && oldCompanyName !== normalizedCompany) {
+                                    db.run(
+                                        `UPDATE products SET supplier = ? WHERE supplier = ?`,
+                                        [normalizedCompany, oldCompanyName],
+                                        (productUpdateErr) => {
+                                            if (productUpdateErr) {
+                                                console.error('Ошибка обновления товаров:', productUpdateErr);
+                                            }
+                                        }
+                                    );
+                                }
+
+                                res.json({
+                                    success: true,
+                                    userId,
+                                    companyName: normalizedCompany
+                                });
+                            }
+                        );
                     }
                 );
             }
@@ -841,24 +871,50 @@ app.put("/admin/users/:userId/supplier", (req, res) => {
                         ? (companyName && companyName.toString().trim()) || DEFAULT_COMPANY_NAME
                         : null;
 
-                    db.run(
-                        `UPDATE users SET role_id = ?, company_name = ? WHERE id = ?`,
-                        [targetRoleId, normalizedCompany, userId],
-                        function(updateErr) {
-                            if (updateErr) {
-                                return res.status(500).json({ error: updateErr.message });
+                    // Получаем старое название компании перед обновлением
+                    db.get(
+                        `SELECT company_name FROM users WHERE id = ?`,
+                        [userId],
+                        (err, oldUser) => {
+                            if (err) {
+                                return res.status(500).json({ error: err.message });
                             }
 
-                            if (this.changes === 0) {
-                                return res.status(400).json({ error: "Изменения не были применены" });
-                            }
+                            const oldCompanyName = oldUser?.company_name;
 
-                            res.json({
-                                success: true,
-                                userId,
-                                isSupplier: supplierFlag,
-                                companyName: normalizedCompany || undefined
-                            });
+                            db.run(
+                                `UPDATE users SET role_id = ?, company_name = ? WHERE id = ?`,
+                                [targetRoleId, normalizedCompany, userId],
+                                function(updateErr) {
+                                    if (updateErr) {
+                                        return res.status(500).json({ error: updateErr.message });
+                                    }
+
+                                    if (this.changes === 0) {
+                                        return res.status(400).json({ error: "Изменения не были применены" });
+                                    }
+
+                                    // Обновляем supplier во всех товарах, если изменилось название компании
+                                    if (supplierFlag && oldCompanyName && oldCompanyName !== normalizedCompany) {
+                                        db.run(
+                                            `UPDATE products SET supplier = ? WHERE supplier = ?`,
+                                            [normalizedCompany, oldCompanyName],
+                                            (productUpdateErr) => {
+                                                if (productUpdateErr) {
+                                                    console.error('Ошибка обновления товаров:', productUpdateErr);
+                                                }
+                                            }
+                                        );
+                                    }
+
+                                    res.json({
+                                        success: true,
+                                        userId,
+                                        isSupplier: supplierFlag,
+                                        companyName: normalizedCompany || undefined
+                                    });
+                                }
+                            );
                         }
                     );
                 });

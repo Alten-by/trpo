@@ -91,7 +91,7 @@
 
 <script>
 // Глобальные переменные
-const PLACEHOLDER_IMAGE = 'https://via.placeholder.com/600x600?text=SwiftBuy';
+const PLACEHOLDER_IMAGE = 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/a3/ThinkCentre_S50.jpg/960px-ThinkCentre_S50.jpg';
 let allProducts = [];
 let filteredProducts = [];
 let currentPage = 1;
@@ -197,9 +197,9 @@ function displayProducts() {
             <div class="product-card">
                 <a class="product-link" href="product.html?id=${product.id}">
                     <div class="product-image">
-                        <img src="${product.image_url || 'https://via.placeholder.com/200x250?text=No+Image'}" 
+                        <img src="${product.image_url || PLACEHOLDER_IMAGE}" 
                              alt="${product.name}" 
-                             onerror="this.src='https://via.placeholder.com/200x250?text=No+Image'">
+                             onerror="this.src='${PLACEHOLDER_IMAGE}'">
                     </div>
                     <div class="product-content">
                         <div class="product-category">${product.category || 'Электроника'}</div>
