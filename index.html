@@ -181,33 +181,47 @@ function displayProducts() {
     const productsToShow = filteredProducts.slice(startIndex, endIndex);
     
     // Отображаем товары
-    productsGrid.innerHTML = productsToShow.map(product => `
-        <div class="product-card">
-            <a class="product-link" href="product.html?id=${product.id}">
-                <div class="product-image">
-                    <img src="${product.image_url || 'https://via.placeholder.com/200x250?text=No+Image'}" 
-                         alt="${product.name}" 
-                         onerror="this.src='https://via.placeholder.com/200x250?text=No+Image'">
-                </div>
-                <div class="product-content">
-                    <div class="product-category">${product.category || 'Электроника'}</div>
-                    <h3 class="product-title">${product.name}</h3>
-                    <div class="product-description">${product.description || ''}</div>
-                    <div class="product-features">
-                        <span class="feature">Арт: ${product.article}</span>
-                        ${product.supplier ? `<span class="feature">${product.supplier}</span>` : ''}
-                        ${product.quantity ? `<span class="feature">В наличии: ${product.quantity}</span>` : ''}
+    productsGrid.innerHTML = productsToShow.map(product => {
+        const quantityRaw = product.quantity === undefined ? null : Number(product.quantity);
+        const quantityKnown = Number.isFinite(quantityRaw);
+        const quantityValue = quantityKnown ? Math.max(0, quantityRaw) : null;
+        const minStockRaw = product.min_stock === undefined ? null : Number(product.min_stock);
+        const hasMinStock = Number.isFinite(minStockRaw) && minStockRaw > 0;
+        const hasLowStock = hasMinStock && quantityKnown && quantityValue < minStockRaw;
+
+        const quantityFeature = quantityKnown
+            ? `<span class="feature ${hasLowStock ? 'feature-low-stock' : ''}">В наличии: ${quantityValue}</span>`
+            : '';
+        const lowStockBadge = hasLowStock ? '<span class="low-stock-badge">Мало на складе</span>' : '';
+        return `
+            <div class="product-card">
+                <a class="product-link" href="product.html?id=${product.id}">
+                    <div class="product-image">
+                        <img src="${product.image_url || 'https://via.placeholder.com/200x250?text=No+Image'}" 
+                             alt="${product.name}" 
+                             onerror="this.src='https://via.placeholder.com/200x250?text=No+Image'">
                     </div>
+                    <div class="product-content">
+                        <div class="product-category">${product.category || 'Электроника'}</div>
+                        <h3 class="product-title">${product.name}</h3>
+                        ${lowStockBadge}
+                        <div class="product-description">${product.description || ''}</div>
+                        <div class="product-features">
+                            <span class="feature">Арт: ${product.article}</span>
+                            ${product.supplier ? `<span class="feature">${product.supplier}</span>` : ''}
+                            ${quantityFeature}
+                        </div>
+                    </div>
+                </a>
+                <div class="product-card-footer">
+                    <div class="product-price">
+                        <span class="current-price">${product.price ? product.price + ' руб.' : 'Цена не указана'}</span>
+                    </div>
+                    <button class="add-to-cart-btn" onclick="addToCart(${product.id})">В корзину</button>
                 </div>
-            </a>
-            <div class="product-card-footer">
-                <div class="product-price">
-                    <span class="current-price">${product.price ? product.price + ' руб.' : 'Цена не указана'}</span>
-                </div>
-                <button class="add-to-cart-btn" onclick="addToCart(${product.id})">В корзину</button>
             </div>
-        </div>
-    `).join('');
+        `;
+    }).join('');
     
     // Отображаем пагинацию
     displayPagination(totalPages);
@@ -433,16 +447,19 @@ function goToCart(event) {
 // Функция перехода к заявкам
 function goToRequests(event) {
     event.preventDefault();
-    const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
-    const user = JSON.parse(localStorage.getItem('user') || 'null');
-    
-    if (!isAuthenticated || !user) {
+    const user = getCurrentUser();
+
+    if (!user || !user.id) {
         window.location.href = 'login.html';
         return;
     }
-    
-    // Показываем уведомление о том, что функция в разработке
-    showCartToast('Функция в разработке');
+
+    const role = (user.role || user.role_name || '').toLowerCase();
+    if (role === 'supplier') {
+        window.location.href = 'supplier-requests.html';
+    } else {
+        window.location.href = 'requests.html';
+    }
 }
 
 // Небольшое уведомление о добавлении в корзину

@@ -77,6 +77,11 @@
                         <label for="productQuantity">Количество *</label>
                         <input type="number" id="productQuantity" name="quantity" required min="0" placeholder="0">
                     </div>
+
+                    <div class="form-group">
+                        <label for="productMinStock">Мин. рекомендуемый остаток</label>
+                        <input type="number" id="productMinStock" name="min_stock" min="0" placeholder="0">
+                    </div>
                 </div>
                 
                 <div class="form-row">
@@ -192,6 +197,7 @@ async function loadProduct() {
         document.getElementById('productQuantity').value = data.quantity || '';
         document.getElementById('productCategory').value = data.category || '';
         document.getElementById('productImage').value = data.image_url || '';
+        document.getElementById('productMinStock').value = data.min_stock ?? '';
     } catch (error) {
         console.error('Ошибка загрузки товара:', error);
         alert(error.message || 'Не удалось загрузить товар');
@@ -214,6 +220,8 @@ document.getElementById('editProductForm').addEventListener('submit', async func
     const description = document.getElementById('productDescription').value.trim();
     const price = parseFloat(document.getElementById('productPrice').value);
     const quantity = parseInt(document.getElementById('productQuantity').value);
+    const minStockInput = document.getElementById('productMinStock').value;
+    const min_stock = minStockInput === '' ? 0 : parseInt(minStockInput, 10);
     const category = document.getElementById('productCategory').value.trim();
     const image_url = document.getElementById('productImage').value.trim();
     
@@ -240,6 +248,12 @@ document.getElementById('editProductForm').addEventListener('submit', async func
         errorMessage.style.display = 'block';
         return;
     }
+
+    if (isNaN(min_stock) || min_stock < 0) {
+        errorMessage.textContent = 'Мин. остаток должен быть неотрицательным числом';
+        errorMessage.style.display = 'block';
+        return;
+    }
     
     try {
         const response = await fetch(`http://localhost:3000/supplier/products/${currentProductId}`, {
@@ -254,6 +268,7 @@ document.getElementById('editProductForm').addEventListener('submit', async func
                 description: description || null,
                 price,
                 quantity,
+                min_stock,
                 category: category || null,
                 image_url: image_url || null
             })
@@ -345,15 +360,20 @@ function goToCart(event) {
 
 function goToRequests(event) {
     event.preventDefault();
-    const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
     const user = getStoredUser();
+    const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
     
     if (!isAuthenticated || !user) {
         window.location.href = 'login.html';
         return;
     }
     
-    showCartToast('Функция в разработке');
+    const role = (user.role || user.role_name || '').toLowerCase();
+    if (role === 'supplier') {
+        window.location.href = 'supplier-requests.html';
+    } else {
+        window.location.href = 'requests.html';
+    }
 }
 
 function showCartToast(message) {

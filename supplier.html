@@ -74,6 +74,11 @@
                         <label for="productQuantity">Количество *</label>
                         <input type="number" id="productQuantity" name="quantity" required min="0" placeholder="0">
                     </div>
+                    
+                    <div class="form-group">
+                        <label for="productMinStock">Мин. рекомендуемый остаток</label>
+                        <input type="number" id="productMinStock" name="min_stock" min="0" placeholder="0">
+                    </div>
                 </div>
                 
                 <div class="form-row">
@@ -98,6 +103,7 @@
         <!-- Список товаров -->
         <div class="profile-section">
             <h2 class="section-title">Мои товары</h2>
+            <div id="low-stock-alert" class="low-stock-alert" style="display: none;"></div>
             <div id="products-list" class="admin-users-list">
                 <div class="loading">Загрузка товаров...</div>
             </div>
@@ -188,26 +194,56 @@ async function loadProducts() {
 
 function renderProducts(products) {
     const container = document.getElementById('products-list');
+    const alertBox = document.getElementById('low-stock-alert');
     if (!container) {
         return;
     }
     
     if (!products.length) {
         container.innerHTML = '<div class="muted-text">У вас пока нет товаров. Создайте первый товар с помощью формы выше.</div>';
+        if (alertBox) {
+            alertBox.style.display = 'none';
+        }
         return;
+    }
+
+    if (alertBox) {
+        const lowStockProducts = products.filter((product) => {
+            const quantity = Number(product.quantity || 0);
+            const minStock = Number(product.min_stock || 0);
+            return minStock > 0 && quantity < minStock;
+        });
+
+        if (lowStockProducts.length) {
+            const names = lowStockProducts
+                .map((product) => `${escapeHtml(product.name || 'Без названия')} (ост. ${Number(product.quantity || 0)}, мин. ${Number(product.min_stock || 0)})`)
+                .join(', ');
+            alertBox.innerHTML = `<strong>Внимание:</strong> низкий остаток у следующих товаров — ${names}.`;
+            alertBox.style.display = 'block';
+        } else {
+            alertBox.style.display = 'none';
+            alertBox.innerHTML = '';
+        }
     }
     
     const rows = products.map((product) => {
+        const quantity = Number(product.quantity || 0);
+        const minStock = Number(product.min_stock || 0);
+        const hasLowStock = minStock > 0 && quantity < minStock;
+        const lowStockBadge = hasLowStock ? '<span class="low-stock-badge">Мало на складе</span>' : '';
+
         return `
             <tr data-product-row="${product.id}">
                 <td>
                     <div class="table-name">${escapeHtml(product.name || 'Без названия')}</div>
                     <div class="table-email">Арт: ${escapeHtml(product.article || '—')}</div>
+                    ${lowStockBadge}
                 </td>
                 <td>${escapeHtml(product.category || '—')}</td>
                 <td>${escapeHtml(product.description || '—')}</td>
                 <td>${Number(product.price || 0).toFixed(2)} руб.</td>
-                <td>${Number(product.quantity || 0)}</td>
+                <td>${quantity}</td>
+                <td>${minStock}</td>
                 <td>
                     <a href="edit-product.html?id=${product.id}" class="link-btn" style="margin-right: 8px;">Редактировать</a>
                     <button class="link-btn delete-btn" onclick="deleteProduct(${product.id})">Удалить</button>
@@ -226,6 +262,7 @@ function renderProducts(products) {
                         <th>Описание</th>
                         <th>Цена</th>
                         <th>Количество</th>
+                        <th>Мин. остаток</th>
                         <th>Действия</th>
                     </tr>
                 </thead>
@@ -278,6 +315,8 @@ document.getElementById('createProductForm').addEventListener('submit', async fu
     const description = document.getElementById('productDescription').value.trim();
     const price = parseFloat(document.getElementById('productPrice').value);
     const quantity = parseInt(document.getElementById('productQuantity').value);
+    const minStockInput = document.getElementById('productMinStock').value;
+    const min_stock = minStockInput === '' ? 0 : parseInt(minStockInput, 10);
     const category = document.getElementById('productCategory').value.trim();
     const image_url = document.getElementById('productImage').value.trim();
     
@@ -304,6 +343,12 @@ document.getElementById('createProductForm').addEventListener('submit', async fu
         errorMessage.style.display = 'block';
         return;
     }
+
+    if (isNaN(min_stock) || min_stock < 0) {
+        errorMessage.textContent = 'Мин. остаток должен быть неотрицательным числом';
+        errorMessage.style.display = 'block';
+        return;
+    }
     
     try {
         const response = await fetch('http://localhost:3000/supplier/products', {
@@ -318,6 +363,7 @@ document.getElementById('createProductForm').addEventListener('submit', async fu
                 description: description || null,
                 price,
                 quantity,
+                min_stock,
                 category: category || null,
                 image_url: image_url || null
             })
@@ -423,7 +469,12 @@ function goToRequests(event) {
         return;
     }
     
-    showCartToast('Функция в разработке');
+    const role = (user.role || user.role_name || '').toLowerCase();
+    if (role === 'supplier') {
+        window.location.href = 'supplier-requests.html';
+    } else {
+        window.location.href = 'requests.html';
+    }
 }
 
 function showCartToast(message) {

@@ -10,6 +10,12 @@ app.use(express.json());
 const db = new sqlite3.Database("./database.db");
 
 const REQUIRED_ROLES = ["customer", "supplier", "admin"];
+const REQUEST_STATUSES = {
+    PENDING: "Заявка на рассмотрении, ожидайте",
+    READY: "Заявка оформлена, ожидайте отгрузки",
+    SHIPPED: "Отгружено",
+    DECLINED: "Откланена"
+};
 const DEFAULT_COMPANY_NAME = "LocalStore";
 const ADMIN_USER = {
     email: "toture11gg@gmail.com",
@@ -30,6 +36,33 @@ function addColumnIfMissing(tableName, columnName, definition) {
 function seedRoles() {
     REQUIRED_ROLES.forEach((role) => {
         db.run(`INSERT OR IGNORE INTO roles (name) VALUES (?)`, [role]);
+    });
+}
+
+function seedRequestStatuses() {
+    const desiredStatuses = Object.values(REQUEST_STATUSES);
+    desiredStatuses.forEach((statusName) => {
+        db.run(`INSERT OR IGNORE INTO statuses (name) VALUES (?)`, [statusName]);
+    });
+
+    const renames = [
+        ["Заявка отклонена", REQUEST_STATUSES.DECLINED],
+        ["Заявка оформлена, ожидайте отгрузки", REQUEST_STATUSES.READY],
+        ["Заявка на рассмотрении, ожидайте", REQUEST_STATUSES.PENDING],
+        ["Новая", REQUEST_STATUSES.PENDING]
+    ];
+
+    renames.forEach(([from, to]) => {
+        db.run(`UPDATE statuses SET name = ? WHERE name = ?`, [to, from]);
+    });
+}
+
+function getStatusId(statusName, callback) {
+    db.get(`SELECT id FROM statuses WHERE name = ?`, [statusName], (err, row) => {
+        if (err) {
+            return callback(err);
+        }
+        callback(null, row ? row.id : null);
     });
 }
 
@@ -155,6 +188,15 @@ db.serialize(() => {
     addColumnIfMissing("users", "password", "TEXT");
     addColumnIfMissing("users", "company_name", "TEXT");
     addColumnIfMissing("products", "created_at", "DATETIME");
+    addColumnIfMissing("products", "min_stock", "INTEGER DEFAULT 0");
+
+    db.run(`CREATE TABLE IF NOT EXISTS statuses (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE,
+        description TEXT
+    )`);
+
+    seedRequestStatuses();
 
     // Создание таблицы products (если еще не создана)
     db.run(`CREATE TABLE IF NOT EXISTS products (
@@ -167,7 +209,35 @@ db.serialize(() => {
         supplier TEXT,
         category TEXT,
         image_url TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        min_stock INTEGER DEFAULT 0
+    )`);
+
+    db.run(`CREATE TABLE IF NOT EXISTS requests (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        status_id INTEGER NOT NULL,
+        date TEXT NOT NULL,
+        total_sum REAL NOT NULL,
+        description TEXT,
+        recipient_name TEXT,
+        delivery_address TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(user_id) REFERENCES users(id),
+        FOREIGN KEY(status_id) REFERENCES statuses(id)
+    )`);
+    addColumnIfMissing("requests", "recipient_name", "TEXT");
+    addColumnIfMissing("requests", "delivery_address", "TEXT");
+    addColumnIfMissing("requests", "created_at", "DATETIME");
+
+    db.run(`CREATE TABLE IF NOT EXISTS request_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        request_id INTEGER NOT NULL,
+        product_id INTEGER NOT NULL,
+        quantity INTEGER NOT NULL,
+        price_per_unit REAL NOT NULL,
+        FOREIGN KEY(request_id) REFERENCES requests(id),
+        FOREIGN KEY(product_id) REFERENCES products(id)
     )`);
 
     // Создание таблицы cart_items (если ещё не создана)
@@ -215,14 +285,36 @@ app.get("/products/search/:query", (req, res) => {
 
 // Добавить товар
 app.post("/products", (req, res) => {
-    const { article, name, description, price, quantity, supplier, category, image_url } = req.body;
-    db.run("INSERT INTO products (article, name, description, price, quantity, supplier, category, image_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        [article, name, description, price, quantity, supplier, category, image_url],
-        function(err) {
-            if (err) return res.status(500).json({ error: err.message });
-            res.json({ id: this.lastID });
+    const { article, name, description, price, quantity, supplier, category, image_url, min_stock } = req.body;
+
+    if (!article) {
+        return res.status(400).json({ error: "Артикул обязателен" });
+    }
+
+    db.get("SELECT id FROM products WHERE article = ?", [article], (err, existingProduct) => {
+        if (err) {
+            return res.status(500).json({ error: err.message });
         }
-    );
+
+        if (existingProduct) {
+            return res.status(400).json({ error: "Товар с таким артикулом уже существует" });
+        }
+
+        const normalizedMinStock = Number.isFinite(Number(min_stock)) && Number(min_stock) >= 0
+            ? Math.floor(Number(min_stock))
+            : 0;
+
+        db.run(
+            "INSERT INTO products (article, name, description, price, quantity, supplier, category, image_url, min_stock) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [article, name, description, price, quantity, supplier, category, image_url, normalizedMinStock],
+            function(err) {
+                if (err) {
+                    return res.status(500).json({ error: err.message });
+                }
+                res.json({ id: this.lastID });
+            }
+        );
+    });
 });
 
 // Поставщик: получить свои товары
@@ -246,28 +338,46 @@ app.get("/supplier/products", (req, res) => {
 // Поставщик: создать товар
 app.post("/supplier/products", (req, res) => {
     const supplierId = Number(req.body.supplierId);
-    const { article, name, description, price, quantity, category, image_url } = req.body;
+    const { article, name, description, price, quantity, category, image_url, min_stock } = req.body;
 
     if (!article || !name || !price || quantity === undefined) {
         return res.status(400).json({ error: "Артикул, название, цена и количество обязательны" });
     }
 
     requireSupplier(supplierId, res, (supplier) => {
-        db.run(
-            "INSERT INTO products (article, name, description, price, quantity, supplier, category, image_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            [article, name, description, price, quantity, supplier.company_name, category || null, image_url || null],
-            function(err) {
+        db.get(
+            "SELECT id FROM products WHERE article = ?",
+            [article],
+            (err, existingProduct) => {
                 if (err) {
-                    if (err.message.includes("UNIQUE constraint")) {
-                        return res.status(400).json({ error: "Товар с таким артикулом уже существует" });
-                    }
                     return res.status(500).json({ error: err.message });
                 }
-                res.json({ 
-                    success: true, 
-                    id: this.lastID,
-                    message: "Товар успешно создан"
-                });
+
+                if (existingProduct) {
+                    return res.status(400).json({ error: "Товар с таким артикулом уже существует" });
+                }
+
+                const normalizedMinStock = Number.isFinite(Number(min_stock)) && Number(min_stock) >= 0
+                    ? Math.floor(Number(min_stock))
+                    : 0;
+
+                db.run(
+                    "INSERT INTO products (article, name, description, price, quantity, supplier, category, image_url, min_stock) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    [article, name, description, price, quantity, supplier.company_name, category || null, image_url || null, normalizedMinStock],
+                    function(err) {
+                        if (err) {
+                            if (err.message.includes("UNIQUE constraint")) {
+                                return res.status(400).json({ error: "Товар с таким артикулом уже существует" });
+                            }
+                            return res.status(500).json({ error: err.message });
+                        }
+                        res.json({ 
+                            success: true, 
+                            id: this.lastID,
+                            message: "Товар успешно создан"
+                        });
+                    }
+                );
             }
         );
     });
@@ -312,7 +422,7 @@ app.get("/supplier/products/:productId", (req, res) => {
 app.put("/supplier/products/:productId", (req, res) => {
     const supplierId = Number(req.body.supplierId);
     const productId = Number(req.params.productId);
-    const { article, name, description, price, quantity, category, image_url } = req.body;
+    const { article, name, description, price, quantity, category, image_url, min_stock } = req.body;
 
     if (!productId) {
         return res.status(400).json({ error: "productId обязателен" });
@@ -350,9 +460,13 @@ app.put("/supplier/products/:productId", (req, res) => {
                         }
 
                         // Обновляем товар
+                        const normalizedMinStock = Number.isFinite(Number(min_stock)) && Number(min_stock) >= 0
+                            ? Math.floor(Number(min_stock))
+                            : 0;
+
                         db.run(
-                            "UPDATE products SET article = ?, name = ?, description = ?, price = ?, quantity = ?, category = ?, image_url = ? WHERE id = ?",
-                            [article, name, description || null, price, quantity, category || null, image_url || null, productId],
+                            "UPDATE products SET article = ?, name = ?, description = ?, price = ?, quantity = ?, category = ?, image_url = ?, min_stock = ? WHERE id = ?",
+                            [article, name, description || null, price, quantity, category || null, image_url || null, normalizedMinStock, productId],
                             function(updateErr) {
                                 if (updateErr) {
                                     return res.status(500).json({ error: updateErr.message });
@@ -923,6 +1037,399 @@ app.delete("/api/cart", (req, res) => {
         
         res.json({ success: true, message: "Корзина очищена", deleted: this.changes });
     });
+});
+
+app.post("/requests/checkout", (req, res) => {
+    const { userId, recipientName, deliveryAddress } = req.body;
+
+    if (!userId) {
+        return res.status(400).json({ error: "userId обязателен" });
+    }
+
+    const trimmedRecipient = (recipientName || "").toString().trim();
+    const trimmedAddress = (deliveryAddress || "").toString().trim();
+
+    if (!trimmedAddress) {
+        return res.status(400).json({ error: "Адрес доставки обязателен" });
+    }
+
+    db.get("SELECT id, fio FROM users WHERE id = ?", [userId], (userErr, user) => {
+        if (userErr) {
+            return res.status(500).json({ error: userErr.message });
+        }
+
+        if (!user) {
+            return res.status(404).json({ error: "Пользователь не найден" });
+        }
+
+        db.all(
+            `SELECT ci.product_id, ci.quantity AS requested_qty, p.quantity AS stock_qty, p.price, p.name
+             FROM cart_items ci
+             JOIN products p ON p.id = ci.product_id
+             WHERE ci.user_id = ?`,
+            [userId],
+            (cartErr, cartItems) => {
+                if (cartErr) {
+                    return res.status(500).json({ error: cartErr.message });
+                }
+
+                if (!cartItems || cartItems.length === 0) {
+                    return res.status(400).json({ error: "Корзина пуста" });
+                }
+
+                getStatusId(REQUEST_STATUSES.READY, (readyErr, readyStatusId) => {
+                    if (readyErr || !readyStatusId) {
+                        return res.status(500).json({ error: "Не удалось получить статус 'Оформлена'" });
+                    }
+
+                    getStatusId(REQUEST_STATUSES.PENDING, (pendingErr, pendingStatusId) => {
+                        if (pendingErr || !pendingStatusId) {
+                            return res.status(500).json({ error: "Не удалось получить статус 'На рассмотрении'" });
+                        }
+
+                        const finalRecipient = trimmedRecipient || user.fio || "Получатель";
+                        const createdRequests = [];
+
+                        db.serialize(() => {
+                            db.run("BEGIN TRANSACTION");
+
+                            const processItem = (index = 0) => {
+                                if (index >= cartItems.length) {
+                                    db.run(
+                                        "DELETE FROM cart_items WHERE user_id = ?",
+                                        [userId],
+                                        (deleteErr) => {
+                                            if (deleteErr) {
+                                                db.run("ROLLBACK");
+                                                return res.status(500).json({ error: deleteErr.message });
+                                            }
+
+                                            db.run("COMMIT", (commitErr) => {
+                                                if (commitErr) {
+                                                    db.run("ROLLBACK");
+                                                    return res.status(500).json({ error: commitErr.message });
+                                                }
+
+                                                res.json({
+                                                    success: true,
+                                                    message: `Создано ${createdRequests.length} заявок`,
+                                                    requests: createdRequests
+                                                });
+                                            });
+                                        }
+                                    );
+                                    return;
+                                }
+
+                                const item = cartItems[index];
+                                const requestedQty = Number(item.requested_qty) || 0;
+                                const unitPrice = Number(item.price) || 0;
+                                const totalSum = unitPrice * requestedQty;
+                                const stockQty = Number(item.stock_qty) || 0;
+                                const inStock = stockQty >= requestedQty;
+                                const statusId = inStock ? readyStatusId : pendingStatusId;
+                                const statusName = inStock ? REQUEST_STATUSES.READY : REQUEST_STATUSES.PENDING;
+                                const isoDate = new Date().toISOString();
+
+                                db.run(
+                                    `INSERT INTO requests (user_id, status_id, date, total_sum, description, recipient_name, delivery_address, created_at)
+                                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                                    [
+                                        userId,
+                                        statusId,
+                                        isoDate,
+                                        totalSum,
+                                        item.name ? `Товар: ${item.name}` : null,
+                                        finalRecipient,
+                                        trimmedAddress,
+                                        isoDate
+                                    ],
+                                    function(insertErr) {
+                                        if (insertErr) {
+                                            db.run("ROLLBACK");
+                                            return res.status(500).json({ error: insertErr.message });
+                                        }
+
+                                        const requestId = this.lastID;
+                                        db.run(
+                                            `INSERT INTO request_items (request_id, product_id, quantity, price_per_unit)
+                                             VALUES (?, ?, ?, ?)`,
+                                            [requestId, item.product_id, requestedQty, unitPrice],
+                                            (itemErr) => {
+                                                if (itemErr) {
+                                                    db.run("ROLLBACK");
+                                                    return res.status(500).json({ error: itemErr.message });
+                                                }
+
+                                                const deductQuantity = inStock ? requestedQty : 0;
+                                                const finalizeItem = () => {
+                                                    createdRequests.push({
+                                                        requestId,
+                                                        productId: item.product_id,
+                                                        productName: item.name,
+                                                        quantity: requestedQty,
+                                                        inStock,
+                                                        status: statusName
+                                                    });
+                                                    processItem(index + 1);
+                                                };
+
+                                                if (deductQuantity > 0) {
+                                                    db.run(
+                                                        "UPDATE products SET quantity = quantity - ? WHERE id = ?",
+                                                        [deductQuantity, item.product_id],
+                                                        (updateErr) => {
+                                                            if (updateErr) {
+                                                                db.run("ROLLBACK");
+                                                                return res.status(500).json({ error: updateErr.message });
+                                                            }
+                                                            finalizeItem();
+                                                        }
+                                                    );
+                                                } else {
+                                                    finalizeItem();
+                                                }
+                                            }
+                                        );
+                                    }
+                                );
+                            };
+
+                            processItem();
+                        });
+                    });
+                });
+            }
+        );
+    });
+});
+
+app.get("/requests", (req, res) => {
+    const userId = Number(req.query.userId);
+
+    if (!userId) {
+        return res.status(400).json({ error: "userId обязателен" });
+    }
+
+    db.all(
+        `SELECT r.id AS requestId,
+                r.date,
+                r.total_sum,
+                r.description,
+                r.recipient_name,
+                r.delivery_address,
+                s.name AS status,
+                ri.product_id,
+                p.name AS productName,
+                ri.quantity,
+                ri.price_per_unit
+         FROM requests r
+         LEFT JOIN statuses s ON s.id = r.status_id
+         LEFT JOIN request_items ri ON ri.request_id = r.id
+         LEFT JOIN products p ON p.id = ri.product_id
+         WHERE r.user_id = ?
+         ORDER BY r.date DESC, r.id DESC`,
+        [userId],
+        (err, rows) => {
+            if (err) {
+                return res.status(500).json({ error: err.message });
+            }
+
+            const requests = rows.map((row) => ({
+                requestId: row.requestId,
+                date: row.date,
+                total_sum: Number(row.total_sum) || 0,
+                description: row.description,
+                recipientName: row.recipient_name,
+                deliveryAddress: row.delivery_address,
+                status: row.status,
+                productId: row.product_id,
+                productName: row.productName,
+                quantity: row.quantity,
+                pricePerUnit: row.price_per_unit
+            }));
+
+            res.json(requests);
+        }
+    );
+});
+
+app.get("/supplier/requests", (req, res) => {
+    const supplierId = Number(req.query.supplierId);
+
+    requireSupplier(supplierId, res, (supplier) => {
+        db.all(
+            `SELECT 
+                r.id AS requestId,
+                r.date,
+                r.total_sum,
+                r.description,
+                r.recipient_name,
+                r.delivery_address,
+                s.name AS status,
+                ri.quantity,
+                ri.price_per_unit,
+                p.name AS product_name,
+                u.fio AS customer_name
+             FROM requests r
+             JOIN request_items ri ON ri.request_id = r.id
+             JOIN products p ON p.id = ri.product_id
+             JOIN users u ON u.id = r.user_id
+             LEFT JOIN statuses s ON s.id = r.status_id
+             WHERE p.supplier = ?
+             ORDER BY r.date DESC, r.id DESC`,
+            [supplier.company_name],
+            (err, rows) => {
+                if (err) {
+                    return res.status(500).json({ error: err.message });
+                }
+
+                const result = rows.map((row) => ({
+                    requestId: row.requestId,
+                    date: row.date,
+                    total_sum: Number(row.total_sum) || 0,
+                    description: row.description,
+                    recipientName: row.recipient_name,
+                    deliveryAddress: row.delivery_address,
+                    status: row.status,
+                    quantity: row.quantity,
+                    pricePerUnit: row.price_per_unit,
+                    productName: row.product_name,
+                    customerName: row.customer_name
+                }));
+
+                res.json(result);
+            }
+        );
+    });
+});
+
+app.put("/supplier/requests/:requestId/status", (req, res) => {
+    const requestId = Number(req.params.requestId);
+    const supplierId = Number(req.body.supplierId);
+    const newStatus = (req.body.status || "").toString().trim();
+
+    if (!requestId || !supplierId) {
+        return res.status(400).json({ error: "requestId и supplierId обязательны" });
+    }
+
+    if (!newStatus || !Object.values(REQUEST_STATUSES).includes(newStatus)) {
+        return res.status(400).json({ error: "Некорректный статус" });
+    }
+
+    requireSupplier(supplierId, res, (supplier) => {
+        db.get(
+            `SELECT p.supplier
+             FROM request_items ri
+             JOIN products p ON p.id = ri.product_id
+             WHERE ri.request_id = ?`,
+            [requestId],
+            (err, row) => {
+                if (err) {
+                    return res.status(500).json({ error: err.message });
+                }
+
+                if (!row) {
+                    return res.status(404).json({ error: "Заявка не найдена" });
+                }
+
+                if (row.supplier !== supplier.company_name) {
+                    return res.status(403).json({ error: "Заявка не принадлежит вам" });
+                }
+
+                getStatusId(newStatus, (statusErr, statusId) => {
+                    if (statusErr || !statusId) {
+                        return res.status(500).json({ error: "Не удалось найти статус" });
+                    }
+
+                    db.run(
+                        `UPDATE requests SET status_id = ? WHERE id = ?`,
+                        [statusId, requestId],
+                        function(updateErr) {
+                            if (updateErr) {
+                                return res.status(500).json({ error: updateErr.message });
+                            }
+
+                            if (this.changes === 0) {
+                                return res.status(400).json({ error: "Изменения не применены" });
+                            }
+
+                            res.json({
+                                success: true,
+                                requestId,
+                                status: newStatus
+                            });
+                        }
+                    );
+                });
+            }
+        );
+    });
+});
+
+app.delete("/requests/:requestId", (req, res) => {
+    const requestId = Number(req.params.requestId);
+    const userId = Number(req.query.userId);
+
+    if (!requestId || !userId) {
+        return res.status(400).json({ error: "requestId и userId обязательны" });
+    }
+
+    db.get(
+        `SELECT r.id, s.name AS status
+         FROM requests r
+         LEFT JOIN statuses s ON s.id = r.status_id
+         WHERE r.id = ? AND r.user_id = ?`,
+        [requestId, userId],
+        (err, request) => {
+            if (err) {
+                return res.status(500).json({ error: err.message });
+            }
+
+            if (!request) {
+                return res.status(404).json({ error: "Заявка не найдена" });
+            }
+
+            if (request.status !== REQUEST_STATUSES.DECLINED) {
+                return res.status(400).json({ error: "Можно удалить только отклонённые заявки" });
+            }
+
+            db.serialize(() => {
+                db.run("BEGIN TRANSACTION");
+
+                db.run(
+                    "DELETE FROM request_items WHERE request_id = ?",
+                    [requestId],
+                    (itemsErr) => {
+                        if (itemsErr) {
+                            db.run("ROLLBACK");
+                            return res.status(500).json({ error: itemsErr.message });
+                        }
+
+                        db.run(
+                            "DELETE FROM requests WHERE id = ?",
+                            [requestId],
+                            (deleteErr) => {
+                                if (deleteErr) {
+                                    db.run("ROLLBACK");
+                                    return res.status(500).json({ error: deleteErr.message });
+                                }
+
+                                db.run("COMMIT", (commitErr) => {
+                                    if (commitErr) {
+                                        db.run("ROLLBACK");
+                                        return res.status(500).json({ error: commitErr.message });
+                                    }
+
+                                    res.json({ success: true, message: "Заявка удалена" });
+                                });
+                            }
+                        );
+                    }
+                );
+            });
+        }
+    );
 });
 
 // Изменить email (логин) пользователя

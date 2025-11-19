@@ -66,11 +66,34 @@
                 <span>Сумма</span>
                 <span id="summary-total">0 руб.</span>
             </div>
-            <p class="summary-note">Авторизуйтесь, чтобы оформить заказ.</p>
+            <p class="summary-note" id="summary-note">Авторизуйтесь, чтобы оформить заказ.</p>
             <button class="primary-btn" id="checkout-btn">Перейти к оформлению</button>
         </aside>
     </div>
 </main>
+
+<div class="checkout-modal-overlay" id="checkout-modal">
+    <div class="checkout-modal-dialog">
+        <button class="checkout-modal-close" data-action="close-checkout" aria-label="Закрыть">&times;</button>
+        <h3>Оформление заявки</h3>
+        <p class="checkout-modal-description">Укажите получателя и адрес доставки. Мы отправим заявку поставщику.</p>
+        <form id="checkout-form" class="checkout-form">
+            <div class="form-group">
+                <label for="checkout-recipient">Имя получателя</label>
+                <input type="text" id="checkout-recipient" name="recipient" placeholder="ФИО получателя" required>
+            </div>
+            <div class="form-group">
+                <label for="checkout-address">Адрес доставки</label>
+                <textarea id="checkout-address" name="address" rows="3" placeholder="Город, улица, дом..." required></textarea>
+            </div>
+            <div id="checkout-error" class="error-message" style="display: none;"></div>
+            <div class="checkout-form-actions">
+                <button type="button" class="link-btn subtle" data-action="close-checkout">Отмена</button>
+                <button type="submit" class="primary-btn" id="checkout-submit-btn">Оформить заявку</button>
+            </div>
+        </form>
+    </div>
+</div>
 
 <footer>
     <div class="footer-content">
@@ -83,6 +106,8 @@
 
 <script>
 const PLACEHOLDER_IMAGE = 'https://via.placeholder.com/600x600?text=SwiftBuy';
+let cachedCartItems = [];
+let checkoutModalReady = false;
 
 function updateAuthNav() {
     const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
@@ -150,42 +175,19 @@ function logout() {
 // Функция перехода к заявкам
 function goToRequests(event) {
     event.preventDefault();
-    const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
-    const user = JSON.parse(localStorage.getItem('user') || 'null');
-    
-    if (!isAuthenticated || !user) {
+    const user = getCurrentUser();
+
+    if (!user || !user.id) {
         window.location.href = 'login.html';
         return;
     }
-    
-    // Показываем уведомление о том, что функция в разработке
-    showCartToast('Функция в разработке');
-}
 
-// Функция для показа toast-уведомлений
-function showCartToast(message) {
-    let toastContainer = document.querySelector('.cart-toast-container');
-    if (!toastContainer) {
-        toastContainer = document.createElement('div');
-        toastContainer.className = 'cart-toast-container';
-        document.body.appendChild(toastContainer);
+    const role = (user.role || user.role_name || '').toLowerCase();
+    if (role === 'supplier') {
+        window.location.href = 'supplier-requests.html';
+    } else {
+        window.location.href = 'requests.html';
     }
-
-    const toast = document.createElement('div');
-    toast.className = 'cart-toast';
-    toast.textContent = message;
-    toastContainer.appendChild(toast);
-
-    requestAnimationFrame(() => {
-        toast.classList.add('show');
-    });
-
-    setTimeout(() => {
-        toast.classList.remove('show');
-        setTimeout(() => {
-            toast.remove();
-        }, 300);
-    }, 2500);
 }
 
 function setupSearchStub() {
@@ -204,6 +206,13 @@ function setupSearchStub() {
         searchClear.style.display = 'none';
         searchInput.focus();
     });
+}
+
+function setSummaryNote(message) {
+    const summaryNote = document.getElementById('summary-note');
+    if (summaryNote) {
+        summaryNote.textContent = message;
+    }
 }
 
 // Получить текущего пользователя
@@ -245,6 +254,7 @@ async function renderCart() {
     const summaryContainer = document.getElementById('cart-summary');
 
     if (!itemsContainer || !summaryContainer) return;
+    cachedCartItems = [];
 
     // Проверяем авторизацию
     const user = getCurrentUser();
@@ -257,10 +267,12 @@ async function renderCart() {
             </div>
         `;
         updateSummary(0, 0);
+        setSummaryNote('Авторизуйтесь, чтобы оформить заявку.');
         return;
     }
 
     const cart = await safeGetCart();
+    cachedCartItems = cart;
 
     if (!cart.length) {
         itemsContainer.innerHTML = `
@@ -271,8 +283,10 @@ async function renderCart() {
             </div>
         `;
         updateSummary(0, 0);
+        setSummaryNote('Добавьте товары в корзину, чтобы оформить заявку.');
         return;
     }
+    setSummaryNote('Нажмите «Перейти к оформлению», чтобы указать данные получателя.');
 
     itemsContainer.innerHTML = cart.map(item => `
         <div class="cart-item" data-id="${item.id}">
@@ -392,9 +406,160 @@ function attachCartEvents() {
                 return;
             }
 
-            showCartToast('Оформление заказа скоро будет доступно');
+            if (!cachedCartItems.length) {
+                showCartToast('Корзина пуста');
+                return;
+            }
+            openCheckoutModal();
         });
     }
+}
+
+function toggleCheckoutModal(show) {
+    const overlay = document.getElementById('checkout-modal');
+    if (!overlay) return;
+
+    if (show) {
+        overlay.classList.add('show');
+        document.body.classList.add('modal-open');
+    } else {
+        overlay.classList.remove('show');
+        document.body.classList.remove('modal-open');
+    }
+
+    const errorBox = document.getElementById('checkout-error');
+    if (errorBox) {
+        errorBox.style.display = 'none';
+        errorBox.textContent = '';
+    }
+}
+
+function openCheckoutModal() {
+    const user = getCurrentUser();
+    if (!user || !user.id) {
+        showCartToast('Войдите в аккаунт для оформления');
+        return;
+    }
+
+    if (!cachedCartItems.length) {
+        showCartToast('Корзина пуста');
+        return;
+    }
+
+    const recipientInput = document.getElementById('checkout-recipient');
+    if (recipientInput) {
+        recipientInput.value = user.fio || '';
+    }
+
+    toggleCheckoutModal(true);
+}
+
+function closeCheckoutModal() {
+    toggleCheckoutModal(false);
+}
+
+async function handleCheckoutSubmit(event) {
+    event.preventDefault();
+
+    const user = getCurrentUser();
+    if (!user || !user.id) {
+        showCartToast('Войдите в аккаунт для оформления');
+        closeCheckoutModal();
+        return;
+    }
+
+    if (!cachedCartItems.length) {
+        showCartToast('Корзина пуста');
+        closeCheckoutModal();
+        return;
+    }
+
+    const recipientInput = document.getElementById('checkout-recipient');
+    const addressInput = document.getElementById('checkout-address');
+    const errorBox = document.getElementById('checkout-error');
+    const submitBtn = document.getElementById('checkout-submit-btn');
+
+    const recipient = (recipientInput?.value || '').trim() || user.fio || '';
+    const address = (addressInput?.value || '').trim();
+
+    if (!address) {
+        if (errorBox) {
+            errorBox.textContent = 'Введите адрес доставки';
+            errorBox.style.display = 'block';
+        }
+        return;
+    } else if (errorBox) {
+        errorBox.style.display = 'none';
+        errorBox.textContent = '';
+    }
+
+    const originalText = submitBtn ? submitBtn.textContent : '';
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Оформляем...';
+    }
+
+    try {
+        const response = await fetch('http://localhost:3000/requests/checkout', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                userId: user.id,
+                recipientName: recipient,
+                deliveryAddress: address
+            })
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.error || 'Не удалось оформить заявку');
+        }
+
+        showCartToast(data.message || `Заявка оформлена. Статус: ${data.status}`);
+        closeCheckoutModal();
+        await renderCart();
+    } catch (error) {
+        console.error('Ошибка при оформлении заявки:', error);
+        if (errorBox) {
+            errorBox.textContent = error.message || 'Не удалось оформить заявку. Попробуйте позже.';
+            errorBox.style.display = 'block';
+        }
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = originalText || 'Оформить заявку';
+        }
+    }
+}
+
+function initCheckoutModal() {
+    if (checkoutModalReady) return;
+    const overlay = document.getElementById('checkout-modal');
+    if (!overlay) return;
+
+    checkoutModalReady = true;
+
+    overlay.addEventListener('click', (event) => {
+        if (event.target === overlay) {
+            closeCheckoutModal();
+        }
+    });
+
+    const closeButtons = overlay.querySelectorAll('[data-action="close-checkout"]');
+    closeButtons.forEach((btn) => btn.addEventListener('click', closeCheckoutModal));
+
+    const form = document.getElementById('checkout-form');
+    if (form) {
+        form.addEventListener('submit', handleCheckoutSubmit);
+    }
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && overlay.classList.contains('show')) {
+            closeCheckoutModal();
+        }
+    });
 }
 
 async function updateItemQuantity(productId, quantity) {
@@ -478,6 +643,7 @@ document.addEventListener('DOMContentLoaded', function() {
     setupSearchStub();
     renderCart();
     attachCartEvents();
+    initCheckoutModal();
 });
 </script>
 

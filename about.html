@@ -152,8 +152,12 @@ function goToRequests(event) {
         return;
     }
     
-    // Показываем уведомление о том, что функция в разработке
-    showCartToast('Функция в разработке');
+    const role = (user.role || user.role_name || '').toLowerCase();
+    if (role === 'supplier') {
+        window.location.href = 'supplier-requests.html';
+    } else {
+        window.location.href = 'requests.html';
+    }
 }
 
 // Функция для показа toast-уведомлений

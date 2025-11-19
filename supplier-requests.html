@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Заявки поставщика - SwiftBuy</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="main-nav">
+    <div class="nav-brand">
+        <h1><a href="index.html" style="color: inherit; text-decoration: none;">SwiftBuy</a></h1>
+    </div>
+    <div class="nav-links">
+        <a href="index.html">Главная</a>
+        <a href="#" onclick="goToCart(event); return false;">Корзина</a>
+        <a href="supplier-requests.html" class="active-link">Заявки</a>
+        <a href="about.html">О нас</a>
+        <div class="nav-search">
+            <div class="search-wrapper">
+                <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <path d="m21 21-4.35-4.35"></path>
+                </svg>
+                <input type="text" class="search-input" placeholder="Поиск по товарам или клиентам..." autocomplete="off">
+                <button class="search-clear" id="search-clear" style="display: none;">×</button>
+            </div>
+        </div>
+        <div class="user-menu-container">
+            <button class="user-icon-btn" id="user-icon-btn" onclick="toggleUserMenu()">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="12" cy="7" r="4"></circle>
+                </svg>
+            </button>
+            <div class="user-dropdown" id="user-dropdown">
+                <div id="user-menu-content"></div>
+            </div>
+        </div>
+    </div>
+</nav>
+
+<main class="requests-page">
+    <header class="requests-header">
+        <div>
+            <h1>Заявки покупателей</h1>
+            <p class="muted-text">Проверяйте запросы на ваши товары и обновляйте их статус.</p>
+        </div>
+    </header>
+
+    <section class="requests-filter">
+        <div class="filter-group">
+            <label for="status-filter">Статус</label>
+            <select id="status-filter" onchange="filterRequests()">
+                <option value="">Все заявки</option>
+            </select>
+        </div>
+    </section>
+
+    <section id="requests-container" class="requests-list">
+        <div class="loading">Загрузка заявок...</div>
+    </section>
+</main>
+
+<footer>
+    <div class="footer-content">
+        <div class="footer-description">
+            <p>SwiftBuy помогает поставщикам оперативно реагировать на запросы клиентов и управлять снабжением.</p>
+        </div>
+        <p class="footercopyright">&copy; 2025 SwiftBuy. Все права защищены.</p>
+    </div>
+</footer>
+
+<script>
+const REQUEST_STATUSES = {
+    PENDING: "Заявка на рассмотрении, ожидайте",
+    READY: "Заявка оформлена, ожидайте отгрузки",
+    SHIPPED: "Отгружено",
+    DECLINED: "Откланена"
+};
+const STATUS_OPTIONS = [
+    REQUEST_STATUSES.PENDING,
+    REQUEST_STATUSES.READY,
+    REQUEST_STATUSES.SHIPPED,
+    REQUEST_STATUSES.DECLINED
+];
+let supplierUser = null;
+let allRequests = [];
+let filteredRequests = [];
+let searchQuery = '';
+
+function updateAuthNav() {
+    const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
+    const user = getStoredUser();
+    const userMenuContent = document.getElementById('user-menu-content');
+
+    if (!userMenuContent) return;
+
+    if (isAuthenticated && user) {
+        const role = user.role || user.role_name || 'customer';
+        const isSupplier = role === 'supplier';
+        const isAdmin = role === 'admin';
+        const companyBlock = isSupplier ? `<div class="user-company">${user.company_name || 'LocalStore'}</div>` : '';
+        const adminLink = isAdmin ? '<a href="admin.html" class="dropdown-item">Админ-панель</a>' : '';
+        const supplierLink = isSupplier ? '<a href="supplier.html" class="dropdown-item">Мои товары</a>' : '';
+
+        userMenuContent.innerHTML = `
+            <div class="user-info">
+                <div class="user-name">${user.fio}</div>
+                <div class="user-email">${user.email}</div>
+                ${companyBlock}
+            </div>
+            <div class="dropdown-divider"></div>
+            <a href="profile.html" class="dropdown-item">Личный кабинет</a>
+            ${adminLink}
+            ${supplierLink}
+            <a href="#" class="dropdown-item" onclick="logout(); return false;">Выйти</a>
+        `;
+    } else {
+        userMenuContent.innerHTML = `
+            <a href="login.html" class="dropdown-item">Войти</a>
+            <a href="register.html" class="dropdown-item">Регистрация</a>
+        `;
+    }
+}
+
+function toggleUserMenu() {
+    const dropdown = document.getElementById('user-dropdown');
+    if (dropdown) {
+        dropdown.classList.toggle('show');
+    }
+}
+
+document.addEventListener('click', (event) => {
+    const userMenuContainer = document.querySelector('.user-menu-container');
+    const dropdown = document.getElementById('user-dropdown');
+    if (userMenuContainer && !userMenuContainer.contains(event.target)) {
+        dropdown?.classList.remove('show');
+    }
+});
+
+function logout() {
+    localStorage.removeItem('user');
+    localStorage.removeItem('isAuthenticated');
+    updateAuthNav();
+    const dropdown = document.getElementById('user-dropdown');
+    dropdown?.classList.remove('show');
+    window.location.href = 'login.html';
+}
+
+function getStoredUser() {
+    try {
+        return JSON.parse(localStorage.getItem('user') || 'null');
+    } catch (e) {
+        return null;
+    }
+}
+
+function goToCart(event) {
+    event.preventDefault();
+    window.location.href = 'cart.html';
+}
+
+function goToRequests(event) {
+    event.preventDefault();
+    const user = supplierUser || getStoredUser();
+    if (!user) {
+        window.location.href = 'login.html';
+        return;
+    }
+    const role = (user.role || user.role_name || '').toLowerCase();
+    if (role === 'supplier') {
+        window.location.href = 'supplier-requests.html';
+    } else {
+        window.location.href = 'requests.html';
+    }
+}
+
+function showToast(message) {
+    let container = document.querySelector('.cart-toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.className = 'cart-toast-container';
+        document.body.appendChild(container);
+    }
+
+    const toast = document.createElement('div');
+    toast.className = 'cart-toast';
+    toast.textContent = message;
+    container.appendChild(toast);
+    requestAnimationFrame(() => toast.classList.add('show'));
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 300);
+    }, 2500);
+}
+
+async function loadRequests() {
+    if (!supplierUser || !supplierUser.id) {
+        showToast('Войдите как поставщик');
+        window.location.href = 'login.html';
+        return;
+    }
+
+    try {
+        const response = await fetch(`http://localhost:3000/supplier/requests?supplierId=${supplierUser.id}`);
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || 'Не удалось получить заявки');
+        }
+
+        allRequests = Array.isArray(data) ? data : [];
+        filteredRequests = [...allRequests];
+        populateStatusFilter();
+        renderRequests();
+    } catch (error) {
+        console.error('Ошибка загрузки заявок поставщика:', error);
+        document.getElementById('requests-container').innerHTML = `<div class="error-message" style="display:block">${error.message}</div>`;
+    }
+}
+
+function populateStatusFilter() {
+    const statuses = [...new Set(allRequests.map((req) => req.status).filter(Boolean))];
+    const select = document.getElementById('status-filter');
+    if (!select) return;
+    const currentValue = select.value;
+    select.innerHTML = `
+        <option value="">Все заявки</option>
+        ${statuses.map((status) => `<option value="${status}">${status}</option>`).join('')}
+    `;
+    select.value = currentValue;
+}
+
+function filterRequests(newSearchValue = null) {
+    if (typeof newSearchValue === 'string') {
+        searchQuery = newSearchValue.trim();
+    }
+
+    const query = searchQuery.toLowerCase();
+    const statusSelect = document.getElementById('status-filter');
+    const statusFilter = statusSelect ? statusSelect.value : '';
+
+    filteredRequests = allRequests.filter((request) => {
+        const matchesStatus = !statusFilter || request.status === statusFilter;
+        const matchesQuery =
+            !query ||
+            (request.productName || '').toLowerCase().includes(query) ||
+            (request.customerName || '').toLowerCase().includes(query) ||
+            (request.status || '').toLowerCase().includes(query);
+
+        return matchesStatus && matchesQuery;
+    });
+
+    renderRequests();
+}
+
+function renderRequests() {
+    const container = document.getElementById('requests-container');
+    if (!container) return;
+
+    if (!filteredRequests.length) {
+        container.innerHTML = `
+            <div class="cart-empty">
+                <h2>Заявок пока нет</h2>
+                <p>Как только покупатели оформят заявки на ваши товары, они появятся здесь.</p>
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = filteredRequests
+        .map((request) => {
+            const status = request.status || '';
+            const statusClass =
+                status === REQUEST_STATUSES.READY
+                    ? "status-success"
+                    : status === REQUEST_STATUSES.SHIPPED
+                        ? "status-shipped"
+                        : status === REQUEST_STATUSES.DECLINED
+                            ? "status-declined"
+                            : "status-pending";
+
+            const selectOptions = STATUS_OPTIONS.map((option) => `
+                <option value="${option}" ${option === status ? 'selected' : ''}>${option}</option>
+            `).join('');
+
+            return `
+                <article class="request-card">
+                    <div class="request-heading">
+                        <div>
+                            <div class="request-id">#${request.requestId}</div>
+                            <p class="request-title">${request.productName || 'Без названия'}</p>
+                        </div>
+                        <span class="request-status ${statusClass}">${status || 'Без статуса'}</span>
+                    </div>
+                    <div class="request-meta">
+                        <div>
+                            <div class="meta-label">Покупатель</div>
+                            <div class="meta-value">${request.customerName || '—'}</div>
+                        </div>
+                        <div>
+                            <div class="meta-label">Количество</div>
+                            <div class="meta-value">${request.quantity || 0} шт.</div>
+                        </div>
+                        <div>
+                            <div class="meta-label">Сумма</div>
+                            <div class="meta-value">${Number(request.total_sum || 0).toFixed(2)} руб.</div>
+                        </div>
+                        <div>
+                            <div class="meta-label">Дата</div>
+                            <div class="meta-value">${formatDate(request.date)}</div>
+                        </div>
+                    </div>
+                    <p class="request-description">
+                        Получатель: <strong>${request.recipientName || '—'}</strong><br>
+                        Адрес: ${request.deliveryAddress || '—'}
+                    </p>
+                    <div class="request-actions">
+                        <label>
+                            Статус:
+                            <select class="status-select" onchange="handleStatusChange(${request.requestId}, this.value)" ${status === REQUEST_STATUSES.SHIPPED ? 'disabled' : ''}>
+                                ${selectOptions}
+                            </select>
+                        </label>
+                    </div>
+                </article>
+            `;
+        })
+        .join('');
+}
+
+async function handleStatusChange(requestId, newStatus) {
+    if (!supplierUser || !supplierUser.id) {
+        window.location.href = 'login.html';
+        return;
+    }
+
+    try {
+        const response = await fetch(`http://localhost:3000/supplier/requests/${requestId}/status`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                supplierId: supplierUser.id,
+                status: newStatus
+            })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || 'Не удалось обновить статус');
+        }
+
+        showToast(`Статус обновлён: ${newStatus}`);
+        allRequests = allRequests.map((req) =>
+            req.requestId === requestId ? { ...req, status: newStatus } : req
+        );
+        filterRequests();
+        populateStatusFilter();
+    } catch (error) {
+        console.error('Ошибка обновления статуса заявки:', error);
+        showToast(error.message || 'Ошибка при обновлении статуса');
+        // перезагрузим список чтобы вернуть селект в исходное состояние
+        loadRequests();
+    }
+}
+
+function formatDate(dateString) {
+    if (!dateString) return '—';
+    try {
+        const date = new Date(dateString);
+        return date.toLocaleString('ru-RU', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    } catch {
+        return dateString;
+    }
+}
+
+function setupSearchControls() {
+    const searchInput = document.querySelector('.search-input');
+    const searchClear = document.getElementById('search-clear');
+
+    if (!searchInput || !searchClear) return;
+
+    searchInput.addEventListener('input', (event) => {
+        const value = event.target.value;
+        searchClear.style.display = value.trim() ? 'flex' : 'none';
+        filterRequests(value);
+    });
+
+    searchClear.addEventListener('click', () => {
+        if (searchInput) {
+            searchInput.value = '';
+        }
+        searchClear.style.display = 'none';
+        filterRequests('');
+        searchInput?.focus();
+    });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    supplierUser = getStoredUser();
+    const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
+
+    if (!isAuthenticated || !supplierUser || (supplierUser.role || supplierUser.role_name) !== 'supplier') {
+        window.location.href = 'login.html';
+        return;
+    }
+
+    updateAuthNav();
+    setupSearchControls();
+    loadRequests();
+});
+</script>
+
+</body>
+</html>
+

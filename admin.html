@@ -380,7 +380,12 @@ function goToRequests(event) {
         return;
     }
     
-    showCartToast('Функция в разработке');
+    const role = (user.role || user.role_name || '').toLowerCase();
+    if (role === 'supplier') {
+        window.location.href = 'supplier-requests.html';
+    } else {
+        window.location.href = 'requests.html';
+    }
 }
 
 function showCartToast(message) {

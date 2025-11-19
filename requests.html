@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Мои заявки - SwiftBuy</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="main-nav">
+    <div class="nav-brand">
+        <h1><a href="index.html" style="color: inherit; text-decoration: none;">SwiftBuy</a></h1>
+    </div>
+    <div class="nav-links">
+        <a href="index.html">Главная</a>
+        <a href="#" onclick="goToCart(event); return false;">Корзина</a>
+        <a href="requests.html" class="active-link">Заявки</a>
+        <a href="about.html">О нас</a>
+        <div class="nav-search">
+            <div class="search-wrapper">
+                <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <path d="m21 21-4.35-4.35"></path>
+                </svg>
+                <input type="text" class="search-input" placeholder="Поиск заявок..." autocomplete="off">
+                <button class="search-clear" id="search-clear" style="display: none;">×</button>
+            </div>
+        </div>
+        <div class="user-menu-container">
+            <button class="user-icon-btn" id="user-icon-btn" onclick="toggleUserMenu()">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="12" cy="7" r="4"></circle>
+                </svg>
+            </button>
+            <div class="user-dropdown" id="user-dropdown">
+                <div id="user-menu-content"></div>
+            </div>
+        </div>
+    </div>
+</nav>
+
+<main class="requests-page">
+    <header class="requests-header">
+        <div>
+            <h1>Мои заявки</h1>
+            <p class="muted-text">Здесь отображаются все заявки, созданные из вашей корзины.</p>
+        </div>
+        <button class="link-btn" onclick="window.location.href='cart.html'">Сформировать новую заявку</button>
+    </header>
+
+    <section class="requests-filter">
+        <div class="filter-group">
+            <label for="status-filter">Статус</label>
+            <select id="status-filter" onchange="filterRequests()">
+                <option value="">Все заявки</option>
+            </select>
+        </div>
+    </section>
+
+    <section id="requests-container" class="requests-list">
+        <div class="loading">Загрузка заявок...</div>
+    </section>
+</main>
+
+<footer>
+    <div class="footer-content">
+        <div class="footer-description">
+            <p>Основанные на передовых технологиях и инновационных решениях, устройства SwiftBuy позволяют вам пользоваться последними достижениями технического прогресса.</p>
+        </div>
+        <p class="footer-copyright">&copy; 2025 SwiftBuy. Все права защищены.</p>
+    </div>
+</footer>
+
+<script>
+const PLACEHOLDER_IMAGE = 'https://via.placeholder.com/600x600?text=SwiftBuy';
+const REQUEST_STATUSES = {
+    PENDING: "Заявка на рассмотрении, ожидайте",
+    READY: "Заявка оформлена, ожидайте отгрузки",
+    SHIPPED: "Отгружено",
+    DECLINED: "Откланена"
+};
+let allRequests = [];
+let filteredRequests = [];
+let searchQuery = '';
+
+function updateAuthNav() {
+    const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
+    const user = JSON.parse(localStorage.getItem('user') || 'null');
+    const userMenuContent = document.getElementById('user-menu-content');
+
+    if (!userMenuContent) return;
+
+    if (isAuthenticated && user) {
+        const role = user.role || user.role_name || 'customer';
+        const isSupplier = role === 'supplier';
+        const isAdmin = role === 'admin';
+        const companyBlock = isSupplier ? `<div class="user-company">${user.company_name || 'LocalStore'}</div>` : '';
+        const adminLink = isAdmin ? '<a href="admin.html" class="dropdown-item">Админ-панель</a>' : '';
+        const supplierLink = isSupplier ? '<a href="supplier.html" class="dropdown-item">Мои товары</a>' : '';
+
+        userMenuContent.innerHTML = `
+            <div class="user-info">
+                <div class="user-name">${user.fio}</div>
+                <div class="user-email">${user.email}</div>
+                ${companyBlock}
+            </div>
+            <div class="dropdown-divider"></div>
+            <a href="profile.html" class="dropdown-item">Личный кабинет</a>
+            ${adminLink}
+            ${supplierLink}
+            <a href="#" class="dropdown-item" onclick="logout(); return false;">Выйти</a>
+        `;
+    } else {
+        userMenuContent.innerHTML = `
+            <a href="login.html" class="dropdown-item">Войти</a>
+            <a href="register.html" class="dropdown-item">Регистрация</a>
+        `;
+    }
+}
+
+function toggleUserMenu() {
+    const dropdown = document.getElementById('user-dropdown');
+    if (dropdown) {
+        dropdown.classList.toggle('show');
+    }
+}
+
+document.addEventListener('click', (event) => {
+    const userMenuContainer = document.querySelector('.user-menu-container');
+    const dropdown = document.getElementById('user-dropdown');
+    if (userMenuContainer && !userMenuContainer.contains(event.target)) {
+        dropdown?.classList.remove('show');
+    }
+});
+
+function logout() {
+    localStorage.removeItem('user');
+    localStorage.removeItem('isAuthenticated');
+    updateAuthNav();
+    const dropdown = document.getElementById('user-dropdown');
+    dropdown?.classList.remove('show');
+}
+
+function goToCart(event) {
+    event.preventDefault();
+    window.location.href = 'cart.html';
+}
+
+function showToast(message) {
+    let container = document.querySelector('.cart-toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.className = 'cart-toast-container';
+        document.body.appendChild(container);
+    }
+
+    const toast = document.createElement('div');
+    toast.className = 'cart-toast';
+    toast.textContent = message;
+    container.appendChild(toast);
+    requestAnimationFrame(() => toast.classList.add('show'));
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 300);
+    }, 2500);
+}
+
+function getCurrentUser() {
+    const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
+    if (!isAuthenticated) return null;
+    try {
+        return JSON.parse(localStorage.getItem('user') || 'null');
+    } catch (error) {
+        return null;
+    }
+}
+
+async function loadRequests() {
+    const user = getCurrentUser();
+    if (!user || !user.id) {
+        showToast('Войдите в систему, чтобы просматривать заявки');
+        document.getElementById('requests-container').innerHTML = `
+            <div class="cart-empty">
+                <h2>Необходимо авторизоваться</h2>
+                <p>Войдите в аккаунт, чтобы увидеть свои заявки.</p>
+                <a href="login.html" class="primary-btn-link">Войти</a>
+            </div>
+        `;
+        return;
+    }
+
+    const role = (user.role || user.role_name || '').toLowerCase();
+    if (role === 'supplier') {
+        window.location.href = 'supplier-requests.html';
+        return;
+    }
+
+    try {
+        const response = await fetch(`http://localhost:3000/requests?userId=${user.id}`);
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || 'Не удалось получить заявки');
+        }
+
+        allRequests = Array.isArray(data) ? data : [];
+        filteredRequests = [...allRequests];
+        populateStatusFilter();
+        renderRequests();
+    } catch (error) {
+        console.error('Ошибка загрузки заявок:', error);
+        document.getElementById('requests-container').innerHTML = `<div class="error-message" style="display:block">${error.message}</div>`;
+    }
+}
+
+function populateStatusFilter() {
+    const statuses = [...new Set(allRequests.map((req) => req.status).filter(Boolean))];
+    const select = document.getElementById('status-filter');
+    if (!select) return;
+    const currentValue = select.value;
+    select.innerHTML = `
+        <option value="">Все заявки</option>
+        ${statuses.map((status) => `<option value="${status}">${status}</option>`).join('')}
+    `;
+    select.value = currentValue;
+}
+
+function filterRequests(newSearchValue = null) {
+    if (typeof newSearchValue === 'string') {
+        searchQuery = newSearchValue.trim();
+    }
+
+    const query = searchQuery.toLowerCase();
+    const statusSelect = document.getElementById('status-filter');
+    const statusFilter = statusSelect ? statusSelect.value : '';
+
+    filteredRequests = allRequests.filter((request) => {
+        const matchesStatus = !statusFilter || request.status === statusFilter;
+        const matchesQuery =
+            !query ||
+            (request.productName || '').toLowerCase().includes(query) ||
+            (request.status || '').toLowerCase().includes(query) ||
+            (request.description || '').toLowerCase().includes(query);
+
+        return matchesStatus && matchesQuery;
+    });
+
+    renderRequests();
+}
+
+function renderRequests() {
+    const container = document.getElementById('requests-container');
+    if (!container) return;
+
+    if (!filteredRequests.length) {
+        container.innerHTML = `
+            <div class="cart-empty">
+                <h2>Заявок пока нет</h2>
+                <p>Оформите заявку через корзину, и она появится здесь.</p>
+                <a href="cart.html" class="primary-btn-link">Перейти в корзину</a>
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = filteredRequests
+        .map((request) => {
+            const status = request.status || '';
+            const statusClass =
+                status === REQUEST_STATUSES.READY
+                    ? "status-success"
+                    : status === REQUEST_STATUSES.SHIPPED
+                        ? "status-shipped"
+                        : status === REQUEST_STATUSES.DECLINED
+                            ? "status-declined"
+                            : "status-pending";
+            const canDelete = status === REQUEST_STATUSES.DECLINED;
+
+            return `
+                <article class="request-card">
+                    <div class="request-heading">
+                        <div>
+                            <div class="request-id">#${request.requestId}</div>
+                            <p class="request-title">${request.productName || 'Без названия'}</p>
+                        </div>
+                        <span class="request-status ${statusClass}">${request.status || 'Без статуса'}</span>
+                    </div>
+                    <div class="request-meta">
+                        <div>
+                            <div class="meta-label">Количество</div>
+                            <div class="meta-value">${request.quantity || 0} шт.</div>
+                        </div>
+                        <div>
+                            <div class="meta-label">Сумма</div>
+                            <div class="meta-value">${Number(request.total_sum || 0).toFixed(2)} руб.</div>
+                        </div>
+                        <div>
+                            <div class="meta-label">Дата</div>
+                            <div class="meta-value">${formatDate(request.date)}</div>
+                        </div>
+                    </div>
+                    <p class="request-description">${request.description || 'Описание отсутствует'}</p>
+                    ${canDelete ? `
+                        <div class="request-actions">
+                            <button class="link-btn danger" onclick="deleteRequest(${request.requestId})">Удалить заявку</button>
+                        </div>
+                    ` : ''}
+                </article>
+            `;
+        })
+        .join('');
+}
+
+async function deleteRequest(requestId) {
+    if (!confirm('Удалить отклонённую заявку?')) {
+        return;
+    }
+
+    const user = getCurrentUser();
+    if (!user || !user.id) {
+        showToast('Авторизуйтесь, чтобы удалить заявку');
+        window.location.href = 'login.html';
+        return;
+    }
+
+    try {
+        const response = await fetch(`http://localhost:3000/requests/${requestId}?userId=${user.id}`, {
+            method: 'DELETE'
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || 'Не удалось удалить заявку');
+        }
+
+        showToast('Заявка удалена');
+        allRequests = allRequests.filter((req) => req.requestId !== requestId);
+        filteredRequests = filteredRequests.filter((req) => req.requestId !== requestId);
+        populateStatusFilter();
+        renderRequests();
+    } catch (error) {
+        console.error('Ошибка удаления заявки:', error);
+        showToast(error.message || 'Ошибка при удалении заявки');
+    }
+}
+
+function formatDate(dateString) {
+    if (!dateString) return '—';
+    try {
+        const date = new Date(dateString);
+        return date.toLocaleString('ru-RU', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    } catch {
+        return dateString;
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    updateAuthNav();
+    setupSearchControls();
+    loadRequests();
+});
+
+function setupSearchControls() {
+    const searchInput = document.querySelector('.search-input');
+    const searchClear = document.getElementById('search-clear');
+
+    if (!searchInput || !searchClear) return;
+
+    searchInput.addEventListener('input', (event) => {
+        const value = event.target.value;
+        searchClear.style.display = value.trim() ? 'flex' : 'none';
+        filterRequests(value);
+    });
+
+    searchClear.addEventListener('click', () => {
+        if (searchInput) {
+            searchInput.value = '';
+        }
+        searchClear.style.display = 'none';
+        filterRequests('');
+        searchInput?.focus();
+    });
+}
+</script>
+
+</body>
+</html>
+
