@@ -55,7 +55,7 @@
         <form id="registerForm" class="auth-form">
             <div class="form-group">
                 <label for="fio">ФИО</label>
-                <input type="text" id="fio" name="fio" required placeholder="Иванов Иван Иванович">
+                <input type="text" id="fio" name="fio" required placeholder="Иванов Иван Иванович" pattern="[А-Яа-яЁёA-Za-z\s\-]+">
             </div>
             
             <div class="form-group">
@@ -65,7 +65,7 @@
             
             <div class="form-group">
                 <label for="phone">Телефон (необязательно)</label>
-                <input type="tel" id="phone" name="phone" placeholder="+375291234567">
+                <input type="tel" id="phone" name="phone" placeholder="+375291234567" pattern="[\d\+\-\(\)\s]+">
             </div>
             
             <div class="form-group">

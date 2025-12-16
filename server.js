@@ -995,7 +995,7 @@ app.post("/api/cart", (req, res) => {
                 
                 if (existingItem) {
                     // Обновляем количество (добавляем к существующему)
-                    const newQuantity = existingItem.quantity + qty;
+                    const newQuantity = (Number(existingItem.quantity) || 0) + qty;
                     db.run(
                         "UPDATE cart_items SET quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                         [newQuantity, existingItem.id],
@@ -1180,75 +1180,106 @@ app.post("/requests/checkout", (req, res) => {
                                 const item = cartItems[index];
                                 const requestedQty = Number(item.requested_qty) || 0;
                                 const unitPrice = Number(item.price) || 0;
-                                const totalSum = unitPrice * requestedQty;
-                                const stockQty = Number(item.stock_qty) || 0;
-                                const inStock = stockQty >= requestedQty;
-                                const statusId = inStock ? readyStatusId : pendingStatusId;
-                                const statusName = inStock ? REQUEST_STATUSES.READY : REQUEST_STATUSES.PENDING;
+                                const stockQtyRaw = Number(item.stock_qty);
+                                const stockQty = Number.isFinite(stockQtyRaw) ? Math.max(0, stockQtyRaw) : 0;
                                 const isoDate = new Date().toISOString();
 
-                                db.run(
-                                    `INSERT INTO requests (user_id, status_id, date, total_sum, description, recipient_name, delivery_address, created_at)
-                                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-                                    [
-                                        userId,
-                                        statusId,
-                                        isoDate,
-                                        totalSum,
-                                        item.name ? `Товар: ${item.name}` : null,
-                                        finalRecipient,
-                                        trimmedAddress,
-                                        isoDate
-                                    ],
-                                    function(insertErr) {
-                                        if (insertErr) {
-                                            db.run("ROLLBACK");
-                                            return res.status(500).json({ error: insertErr.message });
-                                        }
+                                if (requestedQty <= 0) {
+                                    // Пропускаем некорректные позиции
+                                    return processItem(index + 1);
+                                }
 
-                                        const requestId = this.lastID;
-                                        db.run(
-                                            `INSERT INTO request_items (request_id, product_id, quantity, price_per_unit)
-                                             VALUES (?, ?, ?, ?)`,
-                                            [requestId, item.product_id, requestedQty, unitPrice],
-                                            (itemErr) => {
-                                                if (itemErr) {
-                                                    db.run("ROLLBACK");
-                                                    return res.status(500).json({ error: itemErr.message });
-                                                }
-
-                                                const deductQuantity = inStock ? requestedQty : 0;
-                                                const finalizeItem = () => {
-                                                    createdRequests.push({
-                                                        requestId,
-                                                        productId: item.product_id,
-                                                        productName: item.name,
-                                                        quantity: requestedQty,
-                                                        inStock,
-                                                        status: statusName
-                                                    });
-                                                    processItem(index + 1);
-                                                };
-
-                                                if (deductQuantity > 0) {
-                                                    db.run(
-                                                        "UPDATE products SET quantity = quantity - ? WHERE id = ?",
-                                                        [deductQuantity, item.product_id],
-                                                        (updateErr) => {
-                                                            if (updateErr) {
-                                                                db.run("ROLLBACK");
-                                                                return res.status(500).json({ error: updateErr.message });
-                                                            }
-                                                            finalizeItem();
-                                                        }
-                                                    );
-                                                } else {
-                                                    finalizeItem();
-                                                }
+                                const createRequest = (statusId, statusName, qty, deductQty, done) => {
+                                    const totalSum = unitPrice * qty;
+                                    db.run(
+                                        `INSERT INTO requests (user_id, status_id, date, total_sum, description, recipient_name, delivery_address, created_at)
+                                         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                                        [
+                                            userId,
+                                            statusId,
+                                            isoDate,
+                                            totalSum,
+                                            item.name ? `Товар: ${item.name}` : null,
+                                            finalRecipient,
+                                            trimmedAddress,
+                                            isoDate
+                                        ],
+                                        function(insertErr) {
+                                            if (insertErr) {
+                                                db.run("ROLLBACK");
+                                                return res.status(500).json({ error: insertErr.message });
                                             }
-                                        );
-                                    }
-                                );
+
+                                            const requestId = this.lastID;
+                                            db.run(
+                                                `INSERT INTO request_items (request_id, product_id, quantity, price_per_unit)
+                                                 VALUES (?, ?, ?, ?)`,
+                                                [requestId, item.product_id, qty, unitPrice],
+                                                (itemErr) => {
+                                                    if (itemErr) {
+                                                        db.run("ROLLBACK");
+                                                        return res.status(500).json({ error: itemErr.message });
+                                                    }
+
+                                                    const finalizeItem = () => {
+                                                        createdRequests.push({
+                                                            requestId,
+                                                            productId: item.product_id,
+                                                            productName: item.name,
+                                                            quantity: qty,
+                                                            inStock: statusName === REQUEST_STATUSES.READY,
+                                                            status: statusName
+                                                        });
+                                                        done();
+                                                    };
+
+                                                    if (deductQty > 0) {
+                                                        db.run(
+                                                            "UPDATE products SET quantity = quantity - ? WHERE id = ?",
+                                                            [deductQty, item.product_id],
+                                                            (updateErr) => {
+                                                                if (updateErr) {
+                                                                    db.run("ROLLBACK");
+                                                                    return res.status(500).json({ error: updateErr.message });
+                                                                }
+                                                                finalizeItem();
+                                                            }
+                                                        );
+                                                    } else {
+                                                        finalizeItem();
+                                                    }
+                                                }
+                                            );
+                                        }
+                                    );
+                                };
+
+                                // Логика разбиения заявки:
+                                // 1) Если товара достаточно -> одна заявка READY на всё количество
+                                // 2) Если товара мало, но > 0 -> одна заявка READY на доступное количество и вторая PENDING на остаток
+                                // 3) Если товара нет -> одна заявка PENDING на всё количество
+                                if (stockQty >= requestedQty && stockQty > 0) {
+                                    // Всё в наличии
+                                    createRequest(readyStatusId, REQUEST_STATUSES.READY, requestedQty, requestedQty, () => {
+                                        processItem(index + 1);
+                                    });
+                                } else if (stockQty > 0 && stockQty < requestedQty) {
+                                    const readyQty = stockQty;
+                                    const pendingQty = requestedQty - stockQty;
+
+                                    // Сначала часть, которая есть на складе
+                                    createRequest(readyStatusId, REQUEST_STATUSES.READY, readyQty, readyQty, () => {
+                                        // Затем часть, которая ждёт поставщика
+                                        createRequest(pendingStatusId, REQUEST_STATUSES.PENDING, pendingQty, 0, () => {
+                                            processItem(index + 1);
+                                        });
+                                    });
+                                } else {
+                                    // На складе нет, вся заявка ждёт поставщика
+                                    createRequest(pendingStatusId, REQUEST_STATUSES.PENDING, requestedQty, 0, () => {
+                                        processItem(index + 1);
+                                    });
+                                }
                             };
 
                             processItem();

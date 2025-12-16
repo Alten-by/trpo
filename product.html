@@ -59,7 +59,7 @@
 </footer>
 
 <script>
-const PLACEHOLDER_IMAGE = 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/a3/ThinkCentre_S50.jpg/960px-ThinkCentre_S50.jpg';
+const PLACEHOLDER_IMAGE = 'https://via.placeholder.com/600x600?text=SwiftBuy';
 let currentProduct = null;
 
 async function loadProduct() {
@@ -116,6 +116,7 @@ function renderProductNotFound() {
 
 function renderProduct(product, isPlaceholder = false) {
     const container = document.getElementById('product-detail-card');
+    
     const quantityRaw = product.quantity === undefined ? null : Number(product.quantity);
     const quantityKnown = Number.isFinite(quantityRaw);
     const quantityValue = quantityKnown ? Math.max(0, quantityRaw) : null;
@@ -155,20 +156,30 @@ function renderProduct(product, isPlaceholder = false) {
 function setupQuantityLogic() {
     const quantityInput = document.getElementById('quantity-input');
     const buttons = document.querySelectorAll('.quantity-btn');
+
     buttons.forEach(btn => {
         btn.addEventListener('click', () => {
             const action = btn.dataset.action;
             const current = Number(quantityInput.value) || 1;
-            quantityInput.value = action === 'minus' ? Math.max(1, current - 1) : current + 1;
+            if (action === 'minus') {
+                quantityInput.value = Math.max(1, current - 1);
+            } else if (action === 'plus') {
+                quantityInput.value = current + 1;
+            }
         });
     });
 }
 
+// Получить текущего пользователя
 function getCurrentUser() {
-    if (localStorage.getItem('isAuthenticated') !== 'true') return null;
+    const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
+    if (!isAuthenticated) {
+        return null;
+    }
     try {
-        return JSON.parse(localStorage.getItem('user') || 'null');
-    } catch {
+        const user = JSON.parse(localStorage.getItem('user') || 'null');
+        return user;
+    } catch (error) {
         return null;
     }
 }
@@ -240,25 +251,31 @@ function showCartToast(message) {
 }
 
 function updateAuthNav() {
-    const userMenuContent = document.getElementById('user-menu-content');
-    if (!userMenuContent) return;
     const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
     const user = JSON.parse(localStorage.getItem('user') || 'null');
+    const userMenuContent = document.getElementById('user-menu-content');
+
+    if (!userMenuContent) return;
+
     if (isAuthenticated && user) {
         const role = user.role || user.role_name || 'customer';
         const isSupplier = role === 'supplier';
         const isAdmin = role === 'admin';
+        const companyBlock = isSupplier ? `<div class="user-company">${user.company_name || 'LocalStore'}</div>` : '';
+            const adminLink = isAdmin ? '<a href="admin.html" class="dropdown-item">Админ-панель</a>' : '';
+            const supplierLink = isSupplier ? '<a href="supplier.html" class="dropdown-item">Мои товары</a>' : '';
+
         userMenuContent.innerHTML = `
             <div class="user-info">
                 <div class="user-name">${user.fio}</div>
                 <div class="user-email">${user.email}</div>
-                ${isSupplier ? `<div class="user-company">${user.company_name || 'LocalStore'}</div>` : ''}
+                ${companyBlock}
             </div>
             <div class="dropdown-divider"></div>
-            <a href="profile.html" class="dropdown-item">Личный кабинет</a>
-            ${isAdmin ? '<a href="admin.html" class="dropdown-item">Админ-панель</a>' : ''}
-            ${isSupplier ? '<a href="supplier.html" class="dropdown-item">Мои товары</a>' : ''}
-            <a href="#" class="dropdown-item" onclick="logout(); return false;">Выйти</a>
+                <a href="profile.html" class="dropdown-item">Личный кабинет</a>
+                ${adminLink}
+                ${supplierLink}
+                <a href="#" class="dropdown-item" onclick="logout(); return false;">Выйти</a>
         `;
     } else {
         userMenuContent.innerHTML = `
@@ -269,20 +286,31 @@ function updateAuthNav() {
 }
 
 function toggleUserMenu() {
-    document.getElementById('user-dropdown')?.classList.toggle('show');
+    const dropdown = document.getElementById('user-dropdown');
+    if (dropdown) {
+        dropdown.classList.toggle('show');
+    }
 }
 
-document.addEventListener('click', (e) => {
-    const container = document.querySelector('.user-menu-container');
+document.addEventListener('click', function(event) {
+    const userMenuContainer = document.querySelector('.user-menu-container');
     const dropdown = document.getElementById('user-dropdown');
-    if (container && !container.contains(e.target)) dropdown?.classList.remove('show');
+    
+    if (userMenuContainer && !userMenuContainer.contains(event.target)) {
+        if (dropdown) {
+            dropdown.classList.remove('show');
+        }
+    }
 });
 
 function logout() {
     localStorage.removeItem('user');
     localStorage.removeItem('isAuthenticated');
-    document.getElementById('user-dropdown')?.classList.remove('show');
     updateAuthNav();
+    const dropdown = document.getElementById('user-dropdown');
+    if (dropdown) {
+        dropdown.classList.remove('show');
+    }
 }
 
 function goToCart(event) {
@@ -308,14 +336,44 @@ function goToRequests(event) {
     }
 }
 
+// Функция для показа toast-уведомлений
+function showCartToast(message) {
+    let toastContainer = document.querySelector('.cart-toast-container');
+    if (!toastContainer) {
+        toastContainer = document.createElement('div');
+        toastContainer.className = 'cart-toast-container';
+        document.body.appendChild(toastContainer);
+    }
+
+    const toast = document.createElement('div');
+    toast.className = 'cart-toast';
+    toast.textContent = message;
+    toastContainer.appendChild(toast);
+
+    requestAnimationFrame(() => {
+        toast.classList.add('show');
+    });
+
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => {
+            toast.remove();
+        }, 300);
+    }, 2500);
+}
+
 function setupSearchStub() {
     const searchInput = document.querySelector('.search-input');
     const searchClear = document.getElementById('search-clear');
+
     if (!searchInput || !searchClear) return;
-    searchInput.addEventListener('input', (e) => {
-        searchClear.style.display = e.target.value.trim() ? 'flex' : 'none';
+
+    searchInput.addEventListener('input', function(e) {
+        const value = e.target.value.trim();
+        searchClear.style.display = value.length ? 'flex' : 'none';
     });
-    searchClear.addEventListener('click', () => {
+
+    searchClear.addEventListener('click', function() {
         searchInput.value = '';
         searchClear.style.display = 'none';
         searchInput.focus();

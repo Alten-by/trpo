@@ -187,12 +187,13 @@ function displayProducts() {
         const quantityValue = quantityKnown ? Math.max(0, quantityRaw) : null;
         const minStockRaw = product.min_stock === undefined ? null : Number(product.min_stock);
         const hasMinStock = Number.isFinite(minStockRaw) && minStockRaw > 0;
-        const hasLowStock = hasMinStock && quantityKnown && quantityValue < minStockRaw;
+        const hasLowStock = hasMinStock && quantityKnown && quantityValue > 0 && quantityValue < minStockRaw;
 
         const quantityFeature = quantityKnown
             ? `<span class="feature ${hasLowStock ? 'feature-low-stock' : ''}">В наличии: ${quantityValue}</span>`
             : '';
         const lowStockBadge = hasLowStock ? '<span class="low-stock-badge">Мало на складе</span>' : '';
+
         return `
             <div class="product-card">
                 <a class="product-link" href="product.html?id=${product.id}">
