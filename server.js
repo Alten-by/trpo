@@ -1683,6 +1683,299 @@ app.put("/auth/profile/password", (req, res) => {
     });
 });
 
+// Админ: получить отчет по незакрытым (неотгруженным) заявкам
+app.get("/admin/reports/unshipped", (req, res) => {
+    const adminId = Number(req.query.adminId);
+
+    requireAdmin(adminId, res, () => {
+        getStatusId(REQUEST_STATUSES.SHIPPED, (shippedErr, shippedStatusId) => {
+            if (shippedErr) {
+                return res.status(500).json({ error: "Не удалось получить статус 'Отгружено'" });
+            }
+
+            // Получаем все заявки, которые не отгружены (статус != SHIPPED)
+            const query = shippedStatusId
+                ? `SELECT r.id AS requestId,
+                    r.date,
+                    r.total_sum,
+                    r.description,
+                    r.recipient_name,
+                    r.delivery_address,
+                    r.created_at,
+                    s.name AS status,
+                    ri.product_id,
+                    p.name AS productName,
+                    ri.quantity,
+                    ri.price_per_unit,
+                    u.fio AS customerName,
+                    u.email AS customerEmail,
+                    p.supplier
+                FROM requests r
+                LEFT JOIN statuses s ON s.id = r.status_id
+                LEFT JOIN request_items ri ON ri.request_id = r.id
+                LEFT JOIN products p ON p.id = ri.product_id
+                LEFT JOIN users u ON u.id = r.user_id
+                WHERE s.id != ? OR s.id IS NULL
+                ORDER BY r.created_at DESC, r.id DESC`
+                : `SELECT r.id AS requestId,
+                    r.date,
+                    r.total_sum,
+                    r.description,
+                    r.recipient_name,
+                    r.delivery_address,
+                    r.created_at,
+                    s.name AS status,
+                    ri.product_id,
+                    p.name AS productName,
+                    ri.quantity,
+                    ri.price_per_unit,
+                    u.fio AS customerName,
+                    u.email AS customerEmail,
+                    p.supplier
+                FROM requests r
+                LEFT JOIN statuses s ON s.id = r.status_id
+                LEFT JOIN request_items ri ON ri.request_id = r.id
+                LEFT JOIN products p ON p.id = ri.product_id
+                LEFT JOIN users u ON u.id = r.user_id
+                WHERE s.name != ? OR s.name IS NULL
+                ORDER BY r.created_at DESC, r.id DESC`;
+
+            const params = shippedStatusId ? [shippedStatusId] : [REQUEST_STATUSES.SHIPPED];
+
+            db.all(query, params, (err, rows) => {
+                if (err) {
+                    return res.status(500).json({ error: err.message });
+                }
+
+                const requests = rows.map((row) => ({
+                    requestId: row.requestId,
+                    date: row.date,
+                    created_at: row.created_at,
+                    total_sum: Number(row.total_sum) || 0,
+                    description: row.description,
+                    recipientName: row.recipient_name,
+                    deliveryAddress: row.delivery_address,
+                    status: row.status,
+                    productId: row.product_id,
+                    productName: row.productName,
+                    quantity: row.quantity,
+                    pricePerUnit: row.price_per_unit,
+                    customerName: row.customerName,
+                    customerEmail: row.customerEmail,
+                    supplier: row.supplier
+                }));
+
+                res.json(requests);
+            });
+        });
+    });
+});
+
+// Поставщик: поставка товара на склад (увеличение quantity)
+app.post("/supplier/products/:productId/delivery", (req, res) => {
+    const supplierId = Number(req.body.supplierId);
+    const productId = Number(req.params.productId);
+    const { quantity } = req.body;
+
+    if (!supplierId || !productId) {
+        return res.status(400).json({ error: "supplierId и productId обязательны" });
+    }
+
+    const deliveryQty = Number(quantity) || 0;
+    if (deliveryQty <= 0) {
+        return res.status(400).json({ error: "Количество должно быть больше 0" });
+    }
+
+    requireSupplier(supplierId, res, (supplier) => {
+        // Проверяем, что товар принадлежит этому поставщику
+        db.get(
+            "SELECT id, quantity, name FROM products WHERE id = ? AND supplier = ?",
+            [productId, supplier.company_name],
+            (err, product) => {
+                if (err) {
+                    return res.status(500).json({ error: err.message });
+                }
+
+                if (!product) {
+                    return res.status(404).json({ error: "Товар не найден или не принадлежит вам" });
+                }
+
+                const oldQuantity = Number(product.quantity) || 0;
+                const newQuantity = oldQuantity + deliveryQty;
+
+                // Обновляем количество товара на складе
+                db.run(
+                    "UPDATE products SET quantity = ? WHERE id = ?",
+                    [newQuantity, productId],
+                    function(updateErr) {
+                        if (updateErr) {
+                            return res.status(500).json({ error: updateErr.message });
+                        }
+
+                        // Проверяем ожидающие заявки для этого товара
+                        getStatusId(REQUEST_STATUSES.PENDING, (pendingErr, pendingStatusId) => {
+                            if (pendingErr || !pendingStatusId) {
+                                // Если не удалось получить статус, просто возвращаем успех
+                                return res.json({
+                                    success: true,
+                                    message: `Поставка выполнена. Товар на складе: ${newQuantity} шт.`,
+                                    productId: productId,
+                                    productName: product.name,
+                                    oldQuantity: oldQuantity,
+                                    deliveredQuantity: deliveryQty,
+                                    newQuantity: newQuantity,
+                                    pendingRequests: []
+                                });
+                            }
+
+                            // Ищем ожидающие заявки для этого товара
+                            db.all(
+                                `SELECT r.id AS requestId,
+                                    r.user_id,
+                                    ri.quantity AS requested_quantity,
+                                    u.fio AS customerName,
+                                    u.email AS customerEmail,
+                                    r.recipient_name,
+                                    r.delivery_address
+                                FROM requests r
+                                JOIN request_items ri ON ri.request_id = r.id
+                                JOIN users u ON u.id = r.user_id
+                                WHERE r.status_id = ? AND ri.product_id = ?
+                                ORDER BY r.created_at ASC`,
+                                [pendingStatusId, productId],
+                                (reqErr, pendingRequests) => {
+                                    if (reqErr) {
+                                        console.error("Ошибка при поиске ожидающих заявок:", reqErr);
+                                    }
+
+                                    const requests = (pendingRequests || []).map((req) => ({
+                                        requestId: req.requestId,
+                                        userId: req.user_id,
+                                        quantity: req.requested_quantity,
+                                        customerName: req.customerName,
+                                        customerEmail: req.customerEmail,
+                                        recipientName: req.recipient_name,
+                                        deliveryAddress: req.delivery_address
+                                    }));
+
+                                    // Автоматически обрабатываем ожидающие заявки, если товара достаточно
+                                    let remainingStock = newQuantity;
+                                    const processedRequests = [];
+
+                                    if (requests.length > 0 && remainingStock > 0) {
+                                        getStatusId(REQUEST_STATUSES.READY, (readyErr, readyStatusId) => {
+                                            if (readyErr || !readyStatusId) {
+                                                return res.json({
+                                                    success: true,
+                                                    message: `Поставка выполнена. Товар на складе: ${newQuantity} шт.`,
+                                                    productId: productId,
+                                                    productName: product.name,
+                                                    oldQuantity: oldQuantity,
+                                                    deliveredQuantity: deliveryQty,
+                                                    newQuantity: newQuantity,
+                                                    pendingRequests: requests,
+                                                    processedRequests: []
+                                                });
+                                            }
+
+                                            // Обрабатываем заявки последовательно
+                                            const processNextRequest = (index) => {
+                                                if (index >= requests.length || remainingStock <= 0) {
+                                                    // Все заявки обработаны или товар закончился
+                                                    return res.json({
+                                                        success: true,
+                                                        message: `Поставка выполнена. Товар на складе: ${remainingStock} шт.${processedRequests.length > 0 ? ` Обработано заявок: ${processedRequests.length}` : ''}`,
+                                                        productId: productId,
+                                                        productName: product.name,
+                                                        oldQuantity: oldQuantity,
+                                                        deliveredQuantity: deliveryQty,
+                                                        newQuantity: remainingStock,
+                                                        pendingRequests: requests,
+                                                        processedRequests: processedRequests
+                                                    });
+                                                }
+
+                                                const req = requests[index];
+                                                
+                                                if (req.quantity <= remainingStock) {
+                                                    // Обновляем статус заявки на READY и списываем товар
+                                                    db.run("BEGIN TRANSACTION");
+                                                    
+                                                    db.run(
+                                                        "UPDATE requests SET status_id = ? WHERE id = ?",
+                                                        [readyStatusId, req.requestId],
+                                                        (statusErr) => {
+                                                            if (statusErr) {
+                                                                db.run("ROLLBACK");
+                                                                console.error("Ошибка обновления статуса заявки:", statusErr);
+                                                                processNextRequest(index + 1);
+                                                                return;
+                                                            }
+                                                            
+                                                            db.run(
+                                                                "UPDATE products SET quantity = quantity - ? WHERE id = ?",
+                                                                [req.quantity, productId],
+                                                                (deductErr) => {
+                                                                    if (deductErr) {
+                                                                        db.run("ROLLBACK");
+                                                                        console.error("Ошибка списания товара:", deductErr);
+                                                                        processNextRequest(index + 1);
+                                                                        return;
+                                                                    }
+                                                                    
+                                                                    db.run("COMMIT", (commitErr) => {
+                                                                        if (commitErr) {
+                                                                            db.run("ROLLBACK");
+                                                                            console.error("Ошибка коммита транзакции:", commitErr);
+                                                                            processNextRequest(index + 1);
+                                                                            return;
+                                                                        }
+                                                                        
+                                                                        remainingStock -= req.quantity;
+                                                                        processedRequests.push({
+                                                                            requestId: req.requestId,
+                                                                            customerName: req.customerName,
+                                                                            quantity: req.quantity,
+                                                                            status: "Обработана автоматически"
+                                                                        });
+                                                                        
+                                                                        processNextRequest(index + 1);
+                                                                    });
+                                                                }
+                                                            );
+                                                        }
+                                                    );
+                                                } else {
+                                                    // Недостаточно товара для этой заявки, переходим к следующей
+                                                    processNextRequest(index + 1);
+                                                }
+                                            };
+
+                                            processNextRequest(0);
+                                        });
+                                    } else {
+                                        res.json({
+                                            success: true,
+                                            message: `Поставка выполнена. Товар на складе: ${newQuantity} шт.`,
+                                            productId: productId,
+                                            productName: product.name,
+                                            oldQuantity: oldQuantity,
+                                            deliveredQuantity: deliveryQty,
+                                            newQuantity: newQuantity,
+                                            pendingRequests: requests,
+                                            processedRequests: []
+                                        });
+                                    }
+                                }
+                            );
+                        });
+                    }
+                );
+            }
+        );
+    });
+});
+
 app.listen(3000, () => {
     console.log("Сервер запущен: http://localhost:3000");
 });

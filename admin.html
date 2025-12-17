@@ -46,6 +46,9 @@
         <div class="profile-section" id="admin-panel">
             <h1 class="section-title">Админ-панель</h1>
             <p class="section-description">Управляйте ролями пользователей и назначайте поставщиков</p>
+            <div style="margin-bottom: 20px;">
+                <a href="reports-unshipped.html" class="primary-btn-link" style="display: inline-block; margin-right: 10px;">Отчет по незакрытым заявкам</a>
+            </div>
             <div id="admin-users-list" class="admin-users-list">
                 <div class="loading">Загрузка данных...</div>
             </div>
@@ -320,6 +323,7 @@ function updateAuthNav() {
         const isAdmin = role === 'admin';
         const companyBlock = isSupplier ? `<div class="user-company">${user.company_name || DEFAULT_COMPANY_NAME}</div>` : '';
         const adminLink = isAdmin ? '<a href="admin.html" class="dropdown-item">Админ-панель</a>' : '';
+        const reportsLink = isAdmin ? '<a href="reports-unshipped.html" class="dropdown-item">Отчеты</a>' : '';
 
         userMenuContent.innerHTML = `
             <div class="user-info">
@@ -330,6 +334,7 @@ function updateAuthNav() {
             <div class="dropdown-divider"></div>
             <a href="profile.html" class="dropdown-item">Личный кабинет</a>
             ${adminLink}
+            ${reportsLink}
             <a href="#" class="dropdown-item" onclick="logout(); return false;">Выйти</a>
         `;
     } else {
