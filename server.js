@@ -1771,6 +1771,85 @@ app.get("/admin/reports/unshipped", (req, res) => {
     });
 });
 
+// Админ: получить отчет по отгрузкам (SHIPPED) за период
+app.get("/admin/reports/shipments", (req, res) => {
+    const adminId = Number(req.query.adminId);
+    const { dateFrom, dateTo } = req.query;
+
+    requireAdmin(adminId, res, () => {
+        getStatusId(REQUEST_STATUSES.SHIPPED, (shippedErr, shippedStatusId) => {
+            if (shippedErr || !shippedStatusId) {
+                return res.status(500).json({ error: "Не удалось получить статус 'Отгружено'" });
+            }
+
+            // Нормализуем диапазон дат
+            const fromDate = dateFrom ? new Date(dateFrom) : new Date("1970-01-01T00:00:00.000Z");
+            const toDate = dateTo ? new Date(dateTo) : new Date("9999-12-31T23:59:59.999Z");
+
+            if (isNaN(fromDate.getTime()) || isNaN(toDate.getTime())) {
+                return res.status(400).json({ error: "Некорректный формат даты" });
+            }
+
+            const fromIso = fromDate.toISOString();
+            const toIso = toDate.toISOString();
+
+            db.all(
+                `SELECT 
+                    r.id AS requestId,
+                    r.date,
+                    r.total_sum,
+                    r.description,
+                    r.recipient_name,
+                    r.delivery_address,
+                    r.created_at,
+                    s.name AS status,
+                    ri.product_id,
+                    p.name AS productName,
+                    ri.quantity,
+                    ri.price_per_unit,
+                    u.fio AS customerName,
+                    u.email AS customerEmail,
+                    p.supplier
+                 FROM requests r
+                 LEFT JOIN statuses s ON s.id = r.status_id
+                 LEFT JOIN request_items ri ON ri.request_id = r.id
+                 LEFT JOIN products p ON p.id = ri.product_id
+                 LEFT JOIN users u ON u.id = r.user_id
+                 WHERE r.status_id = ?
+                   AND r.date >= ?
+                   AND r.date <= ?
+                 ORDER BY r.date DESC, r.id DESC`,
+                [shippedStatusId, fromIso, toIso],
+                (err, rows) => {
+                    if (err) {
+                        return res.status(500).json({ error: err.message });
+                    }
+
+                    const shipments = rows.map((row) => ({
+                        requestId: row.requestId,
+                        date: row.date,
+                        created_at: row.created_at,
+                        total_sum: Number(row.total_sum) || 0,
+                        description: row.description,
+                        recipientName: row.recipient_name,
+                        deliveryAddress: row.delivery_address,
+                        status: row.status,
+                        productId: row.product_id,
+                        productName: row.productName,
+                        quantity: row.quantity,
+                        pricePerUnit: row.price_per_unit,
+                        customerName: row.customerName,
+                        customerEmail: row.customerEmail,
+                        supplier: row.supplier
+                    }));
+
+                    res.json(shipments);
+                }
+            );
+        });
+    });
+});
+
 // Поставщик: поставка товара на склад (увеличение quantity)
 app.post("/supplier/products/:productId/delivery", (req, res) => {
     const supplierId = Number(req.body.supplierId);

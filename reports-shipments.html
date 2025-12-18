@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Отчет по отгрузкам - SwiftBuy</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="main-nav">
+    <div class="nav-brand">
+        <h1><a href="index.html" style="color: inherit; text-decoration: none;">SwiftBuy</a></h1>
+    </div>
+    <div class="nav-links">
+        <a href="index.html">Главная</a>
+        <a href="#" onclick="goToCart(event); return false;">Корзина</a>
+        <a href="#" onclick="goToRequests(event); return false;">Заявки</a>
+        <a href="about.html">О нас</a>
+        <div class="nav-search">
+            <div class="search-wrapper">
+                <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <path d="m21 21-4.35-4.35"></path>
+                </svg>
+                <input type="text" name="Search" class="search-input" placeholder="Поиск товаров..." autocomplete="off">
+                <button class="search-clear" id="search-clear" style="display: none;">×</button>
+            </div>
+        </div>
+        <div class="user-menu-container">
+            <button class="user-icon-btn" id="user-icon-btn" onclick="toggleUserMenu()">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="12" cy="7" r="4"></circle>
+                </svg>
+            </button>
+            <div class="user-dropdown" id="user-dropdown">
+                <div id="user-menu-content"></div>
+            </div>
+        </div>
+    </div>
+</nav>
+
+<div class="profile-container">
+    <div class="profile-content">
+        <div class="profile-section">
+            <h1 class="section-title">Отчет по отгрузкам</h1>
+            <p class="section-description">Отгруженные заявки по товарам и клиентам за выбранный период</p>
+
+            <form id="filter-form" class="profile-form" style="margin-bottom: 16px;">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="filter-date-from">Дата с</label>
+                        <input type="date" id="filter-date-from" name="dateFrom">
+                    </div>
+                    <div class="form-group">
+                        <label for="filter-date-to">Дата по</label>
+                        <input type="date" id="filter-date-to" name="dateTo">
+                    </div>
+                    <div class="form-group">
+                        <label for="filter-mode">Режим</label>
+                        <select id="filter-mode" name="mode">
+                            <option value="">Все</option>
+                            <option value="product">По товару</option>
+                            <option value="customer">По клиенту</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="filter-query">Фильтр (название товара / клиент)</label>
+                        <input type="text" id="filter-query" name="query" placeholder="Начните вводить...">
+                    </div>
+                </div>
+                <button type="submit" class="primary-btn">Применить фильтр</button>
+            </form>
+            
+            <div id="reports-container" class="admin-users-list">
+                <div class="loading">Загрузка данных...</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<footer>
+    <div class="footer-content">
+        <div class="footer-description">
+            <p>SwiftBuy — это удобный сервис заказа техники у проверенных поставщиков. Управляйте ассортиментом, заявками и клиентами в одном месте.</p>
+        </div>
+        <p class="footer-copyright">&copy; 2025 SwiftBuy. Все права защищены.</p>
+    </div>
+</footer>
+
+<script>
+function getStoredUser() {
+    try {
+        return JSON.parse(localStorage.getItem('user') || 'null');
+    } catch (error) {
+        return null;
+    }
+}
+
+function getUserRole(user) {
+    if (!user) return 'customer';
+    return user.role || user.role_name || 'customer';
+}
+
+function escapeHtml(value) {
+    if (value === null || value === undefined) {
+        return '';
+    }
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function formatDate(dateString) {
+    if (!dateString) return '—';
+    try {
+        const date = new Date(dateString);
+        return date.toLocaleString('ru-RU', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    } catch (error) {
+        return dateString;
+    }
+}
+
+function getStatusClass(status) {
+    if (!status) return 'status-pending';
+    const s = status.toLowerCase();
+    if (s.includes('отгружено') || s.includes('shipped')) return 'status-shipped';
+    if (s.includes('оформлена') || s.includes('ready')) return 'status-success';
+    if (s.includes('отклонен') || s.includes('declined')) return 'status-declined';
+    return 'status-pending';
+}
+
+let allShipments = [];
+let filteredShipments = [];
+
+document.addEventListener('DOMContentLoaded', function() {
+    const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
+    const user = getStoredUser();
+
+    if (!isAuthenticated || !user) {
+        alert('Для доступа к отчетам необходимо войти в систему');
+        window.location.href = 'login.html';
+        return;
+    }
+
+    if (getUserRole(user) !== 'admin') {
+        alert('Доступ к отчетам разрешен только администраторам');
+        window.location.href = 'index.html';
+        return;
+    }
+
+    updateAuthNav();
+    initFilterForm();
+    loadShipments();
+});
+
+function initFilterForm() {
+    const form = document.getElementById('filter-form');
+    if (!form) return;
+
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        // Перезагружаем данные с сервера с учетом выбранного диапазона дат
+        loadShipments();
+    });
+}
+
+async function loadShipments() {
+    const adminUser = getStoredUser();
+    const container = document.getElementById('reports-container');
+
+    if (!container || !adminUser) {
+        return;
+    }
+
+    container.innerHTML = '<div class="loading">Загрузка отчета...</div>';
+
+    try {
+        const dateFromInput = document.getElementById('filter-date-from');
+        const dateToInput = document.getElementById('filter-date-to');
+        const params = new URLSearchParams();
+        params.append('adminId', adminUser.id);
+        if (dateFromInput && dateFromInput.value) {
+            params.append('dateFrom', dateFromInput.value);
+        }
+        if (dateToInput && dateToInput.value) {
+            params.append('dateTo', dateToInput.value);
+        }
+
+        const response = await fetch(`http://localhost:3000/admin/reports/shipments?${params.toString()}`);
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || 'Ошибка загрузки отчета');
+        }
+
+        allShipments = Array.isArray(data) ? data : [];
+        filteredShipments = [...allShipments];
+        applyFilters(false);
+    } catch (error) {
+        container.innerHTML = `<div class="error-message" style="display: block;">${error.message || 'Не удалось загрузить отчет'}</div>`;
+    }
+}
+
+function applyFilters(reRenderFromForm = true) {
+    const container = document.getElementById('reports-container');
+    if (!container) return;
+
+    const modeSelect = document.getElementById('filter-mode');
+    const queryInput = document.getElementById('filter-query');
+    const mode = (modeSelect?.value || '').toLowerCase();
+    const query = (queryInput?.value || '').toLowerCase().trim();
+
+    let result = [...allShipments];
+
+    if (query) {
+        result = result.filter((item) => {
+            const product = (item.productName || '').toLowerCase();
+            const customer = (item.customerName || '').toLowerCase();
+            if (mode === 'product') {
+                return product.includes(query);
+            }
+            if (mode === 'customer') {
+                return customer.includes(query);
+            }
+            // режим "все"
+            return product.includes(query) || customer.includes(query);
+        });
+    }
+
+    filteredShipments = result;
+    renderShipments();
+}
+
+function renderShipments() {
+    const container = document.getElementById('reports-container');
+    if (!container) return;
+
+    if (!filteredShipments.length) {
+        container.innerHTML = '<div class="muted-text">Отгрузок за выбранный период не найдено</div>';
+        return;
+    }
+
+    // Группируем по заявкам
+    const grouped = {};
+    filteredShipments.forEach((row) => {
+        if (!grouped[row.requestId]) {
+            grouped[row.requestId] = {
+                requestId: row.requestId,
+                date: row.date,
+                created_at: row.created_at,
+                total_sum: row.total_sum,
+                recipientName: row.recipientName,
+                deliveryAddress: row.deliveryAddress,
+                status: row.status,
+                customerName: row.customerName,
+                customerEmail: row.customerEmail,
+                items: []
+            };
+        }
+        grouped[row.requestId].items.push({
+            productId: row.productId,
+            productName: row.productName,
+            quantity: row.quantity,
+            pricePerUnit: row.pricePerUnit,
+            supplier: row.supplier
+        });
+    });
+
+    const rows = Object.values(grouped).map((shipment) => {
+        const itemsHtml = shipment.items.map((item) => `
+            <div style="margin: 8px 0; padding: 8px; background: #f5f5f5; border-radius: 4px;">
+                <strong>${escapeHtml(item.productName || 'Без названия')}</strong><br>
+                Количество: ${item.quantity} шт. × ${Number(item.pricePerUnit || 0).toFixed(2)} руб. = ${(item.quantity * Number(item.pricePerUnit || 0)).toFixed(2)} руб.<br>
+                ${item.supplier ? `Поставщик: ${escapeHtml(item.supplier)}` : ''}
+            </div>
+        `).join('');
+
+        return `
+            <tr>
+                <td>
+                    <div class="table-name">Заявка #${shipment.requestId}</div>
+                    <div class="table-email">${formatDate(shipment.created_at || shipment.date)}</div>
+                </td>
+                <td>
+                    <div>${escapeHtml(shipment.customerName || '—')}</div>
+                    <div class="table-email">${escapeHtml(shipment.customerEmail || '—')}</div>
+                </td>
+                <td>
+                    <span class="request-status ${getStatusClass(shipment.status)}">${escapeHtml(shipment.status || 'Неизвестно')}</span>
+                </td>
+                <td>
+                    <div>${escapeHtml(shipment.recipientName || '—')}</div>
+                    <div class="table-email">${escapeHtml(shipment.deliveryAddress || '—')}</div>
+                </td>
+                <td>
+                    <div style="font-weight: bold;">${Number(shipment.total_sum || 0).toFixed(2)} руб.</div>
+                </td>
+                <td>
+                    ${itemsHtml}
+                </td>
+            </tr>
+        `;
+    }).join('');
+
+    const totalAmount = filteredShipments.reduce((sum, row) => sum + (Number(row.total_sum) || 0), 0);
+
+    container.innerHTML = `
+        <div class="admin-users-table-wrapper">
+            <div style="margin-bottom: 16px; padding: 12px; background: #e3f2fd; border-radius: 4px;">
+                <strong>Всего заявок: ${Object.keys(grouped).length}</strong><br>
+                <span>Общая сумма отгрузок: ${totalAmount.toFixed(2)} руб.</span>
+            </div>
+            <table class="admin-users-table">
+                <thead>
+                    <tr>
+                        <th>Заявка</th>
+                        <th>Клиент</th>
+                        <th>Статус</th>
+                        <th>Получатель / Адрес</th>
+                        <th>Сумма</th>
+                        <th>Товары</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        </div>
+    `;
+}
+
+function updateAuthNav() {
+    const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
+    const user = getStoredUser();
+    const userMenuContent = document.getElementById('user-menu-content');
+    
+    if (!userMenuContent) return;
+
+    if (isAuthenticated && user) {
+        const role = getUserRole(user);
+        const isSupplier = role === 'supplier';
+        const isAdmin = role === 'admin';
+        const companyBlock = isSupplier ? `<div class="user-company">${user.company_name || 'LocalStore'}</div>` : '';
+        const adminLink = isAdmin ? '<a href="admin.html" class="dropdown-item">Админ-панель</a>' : '';
+        const reportsUnshippedLink = isAdmin ? '<a href="reports-unshipped.html" class="dropdown-item">Незакрытые заявки</a>' : '';
+        const reportsShipmentsLink = isAdmin ? '<a href="reports-shipments.html" class="dropdown-item">Отгрузки</a>' : '';
+        const supplierLink = isSupplier ? '<a href="supplier.html" class="dropdown-item">Мои товары</a>' : '';
+
+        userMenuContent.innerHTML = `
+            <div class="user-info">
+                <div class="user-name">${user.fio}</div>
+                <div class="user-email">${user.email}</div>
+                ${companyBlock}
+            </div>
+            <div class="dropdown-divider"></div>
+            <a href="profile.html" class="dropdown-item">Личный кабинет</a>
+            ${adminLink}
+            ${reportsUnshippedLink}
+            ${reportsShipmentsLink}
+            ${supplierLink}
+            <a href="#" class="dropdown-item" onclick="logout(); return false;">Выйти</a>
+        `;
+    } else {
+        userMenuContent.innerHTML = `
+            <a href="login.html" class="dropdown-item">Войти</a>
+            <a href="register.html" class="dropdown-item">Регистрация</a>
+        `;
+    }
+}
+
+function logout() {
+    localStorage.removeItem('user');
+    localStorage.removeItem('isAuthenticated');
+    updateAuthNav();
+    window.location.href = 'index.html';
+}
+
+function toggleUserMenu() {
+    const dropdown = document.getElementById('user-dropdown');
+    if (dropdown) {
+        dropdown.classList.toggle('show');
+    }
+}
+
+document.addEventListener('click', function(event) {
+    const userMenuContainer = document.querySelector('.user-menu-container');
+    const dropdown = document.getElementById('user-dropdown');
+    
+    if (userMenuContainer && !userMenuContainer.contains(event.target)) {
+        if (dropdown) {
+            dropdown.classList.remove('show');
+        }
+    }
+});
+
+function goToCart(event) {
+    event.preventDefault();
+    window.location.href = 'cart.html';
+}
+
+function goToRequests(event) {
+    event.preventDefault();
+    const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
+    const user = getStoredUser();
+    
+    if (!isAuthenticated || !user) {
+        window.location.href = 'login.html';
+        return;
+    }
+    
+    const role = (user.role || user.role_name || '').toLowerCase();
+    if (role === 'supplier') {
+        window.location.href = 'supplier-requests.html';
+    } else {
+        window.location.href = 'requests.html';
+    }
+}
+</script>
+
+</body>
+</html>
+
+
